@@ -15,6 +15,20 @@ This repository contains a complete demonstration of [Crossplane](https://crossp
 - [Crossplane CLI](https://docs.crossplane.io/latest/cli/)
 - [Helm](https://helm.sh/docs/intro/install/)
 
+## Cost Estimate
+
+Running this specific Crossplane demo on AWS will cost approximately **$0.25 per hour** (or about **$185 per month** if left running continuously) in the `us-east-1` region. If you spin it up for a 2-hour learning session and then destroy it, it will only cost you about **$0.50**.
+
+**Breakdown of costs:**
+- **EKS Control Plane:** ~$0.10 per hour (~$73.00/month)
+- **EC2 Worker Nodes:** 2x `t3.medium` instances at ~$0.0416 per hour each = ~$0.083 per hour (~$60.75/month)
+- **NAT Gateway:** 1 NAT Gateway at ~$0.045 per hour = ~$32.85/month
+- **EBS Storage:** Default EBS volumes for worker nodes = ~$3.20/month
+- **RDS PostgreSQL Instance:** 1x `db.t3.micro` instance at ~$0.018 per hour = ~$13.14/month (plus ~$2.30/month for 20GB storage)
+- **S3 Bucket & IAM Role:** Negligible / Free
+
+> **⚠️ Important:** To avoid a surprise AWS bill, **always remember to tear down the environment** as soon as you are done testing. See the [Cleanup](#cleanup) section at the bottom of this README.
+
 ## Step 1: Provision EKS and Install Crossplane
 
 Navigate to the `terraform` directory and apply the configuration:
