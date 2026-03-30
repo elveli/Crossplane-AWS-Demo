@@ -1,0 +1,12 @@
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: crossplane-demo-bucket-xyz123
+  labels:
+    docs.crossplane.io/example: provider-aws
+spec:
+  forProvider:
+    region: us-east-1
+    objectOwnership: BucketOwnerEnforced
+  providerConfigRef:
+    name: default

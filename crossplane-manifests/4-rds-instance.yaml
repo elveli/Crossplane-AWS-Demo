@@ -1,0 +1,23 @@
+apiVersion: rds.aws.upbound.io/v1beta1
+kind: Instance
+metadata:
+  name: crossplane-demo-db
+spec:
+  forProvider:
+    region: us-east-1
+    engine: postgres
+    engineVersion: "15.4"
+    instanceClass: db.t3.micro
+    allocatedStorage: 20
+    skipFinalSnapshot: true
+    publiclyAccessible: false
+    username: postgresadmin
+    passwordSecretRef:
+      name: db-password
+      namespace: default
+      key: password
+  providerConfigRef:
+    name: default
+  writeConnectionSecretToRef:
+    name: crossplane-demo-db-conn
+    namespace: default

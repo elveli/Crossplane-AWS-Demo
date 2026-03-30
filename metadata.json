@@ -1,0 +1,5 @@
+{
+  "name": "Crossplane AWS Demo",
+  "description": "A complete demonstration of Crossplane running on AWS, including Terraform EKS provisioning and Crossplane manifests.",
+  "requestFramePermissions": []
+}
