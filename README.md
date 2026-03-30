@@ -125,23 +125,43 @@ kubectl apply -f crossplane-manifests/5-iam-role.yaml
 
 ## Step 5: Useful Crossplane & Kubectl Commands
 
-Check the status of your managed resources:
+**Checking Overall Crossplane Health & Status:**
+Open-source Crossplane does not have a built-in web UI or a single health check URL. Instead, it operates natively within Kubernetes. You check its "overall" health by querying the Kubernetes API:
+
 ```bash
+# 1. Check if the core Crossplane pods are running
+kubectl get pods -n crossplane-system
+
+# 2. Check if all installed Providers (like AWS) are healthy and ready
+kubectl get providers
+
+# 3. View the status of ALL infrastructure resources managed by Crossplane
 kubectl get managed
 ```
+If `READY` is `True` and `SYNCED` is `True` for your providers and managed resources, your Crossplane environment is healthy.
 
-Check specific resources:
+**Viewing the Generated RDS Secret:**
+Crossplane automatically writes the RDS connection details to a Kubernetes secret. You can view and decode it using `kubectl`:
+```bash
+# View the secret metadata and keys
+kubectl get secret crossplane-demo-db-conn -n default -o yaml
+
+# Decode and view the actual database password
+kubectl get secret crossplane-demo-db-conn -n default -o jsonpath='{.data.password}' | base64 --decode
+```
+
+**Check specific resources:**
 ```bash
 kubectl get buckets.s3.aws.upbound.io
 kubectl get instances.rds.aws.upbound.io
 ```
 
-Describe a resource to see events and status conditions:
+**Describe a resource to see events and status conditions:**
 ```bash
 kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 ```
 
-Use the Crossplane CLI to trace a resource and see its full dependency tree and status:
+**Use the Crossplane CLI to trace a resource and see its full dependency tree and status:**
 ```bash
 crossplane beta trace bucket.s3.aws.upbound.io crossplane-demo-bucket-xyz123
 ```
