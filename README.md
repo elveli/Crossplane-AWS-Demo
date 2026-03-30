@@ -2,6 +2,21 @@
 
 This repository contains a complete demonstration of [Crossplane](https://crossplane.io/) running on Amazon Web Services (AWS). It uses Terraform to provision the underlying EKS cluster and Helm to install Crossplane, followed by Crossplane manifests to provision AWS resources directly from Kubernetes.
 
+## What Does This Demo Implement?
+
+This demo bridges the gap between Kubernetes and AWS by provisioning:
+1. **An EKS Cluster (via Terraform):** The control plane where Crossplane lives.
+2. **An S3 Bucket:** Demonstrates provisioning simple object storage.
+3. **An RDS PostgreSQL Database:** Demonstrates provisioning complex, stateful infrastructure. **Why RDS?** We include RDS to showcase one of Crossplane's most powerful features: seamless secret management. When Crossplane creates the database, it automatically writes the connection details (endpoint, port, username, password) directly into a Kubernetes Secret. Your application Pods can instantly mount this secret and connect to the database without any manual hand-offs or external secret managers.
+4. **An IAM Role:** Demonstrates managing cloud security and identity alongside your apps.
+
+## Benefits of Crossplane
+
+- **A Single API (Kubernetes):** Manage your cloud infrastructure (AWS) and your applications using the exact same Kubernetes API and tools (`kubectl`, Helm, ArgoCD).
+- **Self-Service Infrastructure:** Developers can request databases, caches, or buckets by simply applying a Kubernetes YAML file, without needing to learn Terraform or wait for an infrastructure team.
+- **Continuous Reconciliation:** Unlike Terraform which only checks state when you run `terraform apply`, Crossplane runs as a continuous control loop. If someone manually modifies your S3 bucket in the AWS Console, Crossplane will instantly detect the drift and revert it to the desired state.
+- **No More State Files:** The Kubernetes `etcd` database acts as your state file.
+
 ## Repository Structure
 
 - `terraform/`: Contains the Terraform code to provision an AWS VPC, an EKS cluster, and install Crossplane via Helm.
