@@ -180,7 +180,46 @@ kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 **Use the Crossplane CLI to trace a resource and see its full dependency tree and status:**
 ```bash
 crossplane beta trace bucket.s3.aws.upbound.io crossplane-demo-bucket-xyz123
+crossplane beta trace instance.rds.aws.upbound.io crossplane-demo-db
 ```
+
+## Troubleshooting & Logs
+
+**1. Viewing Crossplane Logs**
+Crossplane and its providers run as standard Kubernetes Pods in the `crossplane-system` namespace. If something isn't working, their logs are the best place to look:
+
+```bash
+# View logs for the core Crossplane controller
+kubectl logs -n crossplane-system -l app=crossplane
+
+# View logs for the AWS Providers (where the actual AWS API calls happen)
+# First, list the provider pods to get their names:
+kubectl get pods -n crossplane-system | grep provider-aws
+
+# Then fetch logs for a specific provider (e.g., the RDS provider):
+kubectl logs -n crossplane-system <provider-aws-rds-pod-name>
+```
+
+**2. Fixing `crossplane beta top` (Metrics Server Error)**
+If you try to run `crossplane beta top` and get an error about `metrics-server`, it's because AWS EKS does not install the Kubernetes Metrics Server by default. You can install it with one command:
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+Wait about 60 seconds for it to start collecting data, and then `crossplane beta top` will work perfectly!
+
+**3. Viewing Logs for AWS Resources (S3, RDS, IAM)**
+It is important to understand that Crossplane provisions **real AWS managed services**, not Kubernetes Pods. 
+- Because an RDS database or S3 bucket is not a Pod, **you cannot run `kubectl logs` on them.**
+- To view the actual database logs or S3 access logs, you must log into the **AWS Console** and use **AWS CloudWatch**.
+- However, to see what *Crossplane* is doing to those resources (e.g., update attempts, sync errors), you use:
+  ```bash
+  # List all AWS resources managed by Crossplane
+  kubectl get managed
+  
+  # View Crossplane's event log for a specific resource
+  kubectl describe instance.rds.aws.upbound.io crossplane-demo-db
+  ```
 
 ## Cleanup
 
