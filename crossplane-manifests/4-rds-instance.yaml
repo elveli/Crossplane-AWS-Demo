@@ -6,7 +6,7 @@ spec:
   forProvider:
     region: us-east-1
     engine: postgres
-    engineVersion: "15.4"
+    engineVersion: "16.3"
     instanceClass: db.t3.micro
     allocatedStorage: 20
     skipFinalSnapshot: true
