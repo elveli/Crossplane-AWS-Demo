@@ -68,7 +68,7 @@ kubectl get pods -n crossplane-system
 
 ## Step 2: Configure AWS Credentials for Crossplane
 
-Crossplane needs AWS credentials to provision resources. Create a `creds.conf` file with your AWS credentials:
+Crossplane needs AWS credentials to provision resources. Create a temporary `creds.conf` file in your **current directory** (the root of this project) with your AWS credentials:
 
 ```ini
 [default]
@@ -76,11 +76,18 @@ aws_access_key_id = YOUR_ACCESS_KEY
 aws_secret_access_key = YOUR_SECRET_KEY
 ```
 
-Create a Kubernetes secret in the `crossplane-system` namespace:
+*(Note: You can also just point to your existing `~/.aws/credentials` file in the next step if you prefer).*
+
+Create a Kubernetes secret in the `crossplane-system` namespace using this file:
 
 ```bash
 kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./creds.conf
 ```
+
+> **⚠️ Security Warning:** `creds.conf` contains your plaintext AWS secrets. **Do not commit this file to Git.** Delete it immediately after running the command above:
+> ```bash
+> rm creds.conf
+> ```
 
 ## Step 3: Install Upbound AWS Providers
 
