@@ -185,19 +185,21 @@ crossplane beta trace instance.rds.aws.upbound.io crossplane-demo-db
 
 ## Troubleshooting & Logs
 
-**1. Viewing Crossplane Logs**
-Crossplane and its providers run as standard Kubernetes Pods in the `crossplane-system` namespace. If something isn't working, their logs are the best place to look:
+**1. Viewing and Describing Crossplane Pods**
+Crossplane and its providers run as standard Kubernetes Pods in the `crossplane-system` namespace. If something isn't working, checking their status, events, and logs is the best place to look:
 
 ```bash
-# View logs for the core Crossplane controller
+# First, list all the Crossplane pods to get their exact names:
+kubectl get pods -n crossplane-system
+
+# Describe a specific pod to see its events, state, and configuration:
+kubectl describe pod <pod-name> -n crossplane-system
+
+# View logs for the core Crossplane controller:
 kubectl logs -n crossplane-system -l app=crossplane
 
-# View logs for the AWS Providers (where the actual AWS API calls happen)
-# First, list the provider pods to get their names:
-kubectl get pods -n crossplane-system | grep provider-aws
-
-# Then fetch logs for a specific provider (e.g., the RDS provider):
-kubectl logs -n crossplane-system <provider-aws-rds-pod-name>
+# View logs for a specific AWS Provider pod:
+kubectl logs -n crossplane-system <provider-aws-pod-name>
 ```
 
 **2. Fixing `crossplane beta top` (Metrics Server Error)**
