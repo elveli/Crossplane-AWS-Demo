@@ -4,7 +4,7 @@ metadata:
   name: crossplane-demo-role
 spec:
   forProvider:
-    assumeRolePolicyDocument: |
+    assumeRolePolicy: |
       {
         "Version": "2012-10-17",
         "Statement": [
