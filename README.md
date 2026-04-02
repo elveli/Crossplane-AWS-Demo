@@ -134,6 +134,11 @@ kubectl apply -f crossplane-manifests/4-rds-instance.yaml
 kubectl apply -f crossplane-manifests/5-iam-role.yaml
 ```
 
+**4. Create a DynamoDB Table (Provisions in seconds!):**
+```bash
+kubectl apply -f crossplane-manifests/6-dynamodb-table.yaml
+```
+
 ## Step 5: Useful Crossplane & Kubectl Commands
 
 **Checking Overall Crossplane Health & Status:**
@@ -250,6 +255,7 @@ You generally do not edit these pods directly. Instead, you manipulate them thro
 
 First, delete the Crossplane managed resources:
 ```bash
+kubectl delete -f crossplane-manifests/6-dynamodb-table.yaml
 kubectl delete -f crossplane-manifests/5-iam-role.yaml
 kubectl delete -f crossplane-manifests/4-rds-instance.yaml
 kubectl delete -f crossplane-manifests/3-s3-bucket.yaml
