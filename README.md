@@ -76,12 +76,16 @@ aws_access_key_id = YOUR_ACCESS_KEY
 aws_secret_access_key = YOUR_SECRET_KEY
 ```
 
-*(Note: You can also just point to your existing `~/.aws/credentials` file in the next step if you prefer).*
+*(Note: You can also just point to your existing AWS credentials file in the next step if you prefer).*
 
 Create a Kubernetes secret in the `crossplane-system` namespace using this file:
 
 ```bash
+# If using the local creds.conf file:
 kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./creds.conf
+
+# OR, if using your existing AWS credentials file:
+kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=$HOME/.aws/credentials
 ```
 
 > **⚠️ Security Warning:** `creds.conf` contains your plaintext AWS secrets. **Do not commit this file to Git.** Delete it immediately after running the command above:
