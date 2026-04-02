@@ -152,9 +152,14 @@ kubectl get managed
 If `READY` is `True` and `SYNCED` is `True` for your providers and managed resources, your Crossplane environment is healthy.
 
 **Viewing the Generated RDS Secret:**
-Crossplane automatically writes the RDS connection details to a Kubernetes secret. You can view and decode it using `kubectl`:
+Crossplane automatically writes the RDS connection details to a Kubernetes secret. *(Note: RDS instances take 5-10 minutes to provision in AWS. The secret will not be fully populated with the endpoint and password until the instance status is `READY=True`)*.
+
+You can view and decode it using `kubectl`:
 ```bash
-# View the secret metadata and keys
+# First, check if the RDS instance is ready
+kubectl get instances.rds.aws.upbound.io
+
+# View all keys in the secret to see what Crossplane populated
 kubectl get secret crossplane-demo-db-conn -n default -o yaml
 
 # Decode and view the actual database password
