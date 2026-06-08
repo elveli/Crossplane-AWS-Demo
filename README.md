@@ -66,6 +66,36 @@ Verify Crossplane is running:
 kubectl get pods -n crossplane-system
 ```
 
+---
+
+### Alternative Step 1: Run Locally on Docker Desktop (Save Money!)
+
+If you want to avoid the **~$73/month** cost of running an AWS EKS control plane, you can run Crossplane entirely on your local machine using Docker Desktop! Crossplane will run locally but will still reach out to AWS to provision your cloud resources.
+
+**1. Enable Kubernetes in Docker Desktop:**
+Open Docker Desktop navigate to **Settings > Kubernetes** and check **Enable Kubernetes**. Apply and wait for the cluster to start. 
+
+Ensure your local `kubectl` context is set to Docker Desktop:
+```bash
+kubectl config use-context docker-desktop
+```
+
+**2. Install Crossplane using Helm:**
+Since you aren't using the Terraform scripts (which installed Crossplane for you on EKS), you need to install it locally:
+```bash
+helm repo add crossplane-stable https://charts.crossplane.io/stable
+helm repo update
+helm install crossplane crossplane-stable/crossplane --namespace crossplane-system --create-namespace
+```
+
+**3. Verify Crossplane is running:**
+```bash
+kubectl get pods -n crossplane-system
+```
+*(Once running, you can skip the Terraform steps entirely and proceed directly to **Step 2**!)*
+
+---
+
 ## Step 2: Configure AWS Credentials for Crossplane
 
 Crossplane needs AWS credentials to provision resources. Create a temporary `creds.conf` file in your **current directory** (the root of this project) with your AWS credentials:
@@ -263,8 +293,9 @@ kubectl delete -f crossplane-manifests/3-s3-bucket.yaml
 
 Wait for them to be deleted (Crossplane will delete the actual AWS resources).
 
-Then, destroy the Terraform infrastructure:
+Then, if you provisioned the EKS cluster using Terraform (Step 1), destroy the infrastructure:
 ```bash
 cd terraform
 terraform destroy -auto-approve
 ```
+*(If you ran this locally on Docker Desktop, simply uninstall the Helm release from your local cluster instead: `helm uninstall crossplane --namespace crossplane-system`)*
