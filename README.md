@@ -44,7 +44,13 @@ Running this specific Crossplane demo on AWS will cost approximately **$0.25 per
 
 > **⚠️ Important:** To avoid a surprise AWS bill, **always remember to tear down the environment** as soon as you are done testing. See the [Cleanup](#cleanup) section at the bottom of this README.
 
-## Step 1: Provision EKS and Install Crossplane
+## Step 1: Choose Your Environment
+
+To run Crossplane, you need a Kubernetes cluster to serve as its control plane. You can choose to provision a real cluster in AWS, or run it entirely on your local machine. Choose **Option A** or **Option B** below:
+
+### Option A: Provision EKS via Terraform (AWS)
+
+*Use this option if you want a production-like EKS environment. This will incur AWS costs.*
 
 Navigate to the `terraform` directory and apply the configuration:
 
@@ -66,14 +72,12 @@ Verify Crossplane is running:
 kubectl get pods -n crossplane-system
 ```
 
----
+### Option B: Run Locally on Docker Desktop (Save Money!)
 
-### Alternative Step 1: Run Locally on Docker Desktop (Save Money!)
-
-If you want to avoid the **~$73/month** cost of running an AWS EKS control plane, you can run Crossplane entirely on your local machine using Docker Desktop! Crossplane will run locally but will still reach out to AWS to provision your cloud resources.
+*Use this option if you want to avoid the **~$73/month** cost of running an AWS EKS control plane. Crossplane will run locally but will still successfully reach out to AWS to provision your cloud resources.*
 
 **1. Enable Kubernetes in Docker Desktop:**
-Open Docker Desktop navigate to **Settings > Kubernetes** and check **Enable Kubernetes**. Apply and wait for the cluster to start. 
+Open Docker Desktop navigate to **Settings > Kubernetes** and check **Enable Kubernetes**. Apply and wait for the cluster to start (this takes a few minutes). 
 
 Ensure your local `kubectl` context is set to Docker Desktop:
 ```bash
@@ -81,7 +85,7 @@ kubectl config use-context docker-desktop
 ```
 
 **2. Install Crossplane using Helm:**
-Since you aren't using the Terraform scripts (which installed Crossplane for you on EKS), you need to install it locally:
+Since you aren't using the Terraform scripts (which install Crossplane automatically on EKS), you need to install it on your local cluster:
 ```bash
 helm repo add crossplane-stable https://charts.crossplane.io/stable
 helm repo update
@@ -92,7 +96,6 @@ helm install crossplane crossplane-stable/crossplane --namespace crossplane-syst
 ```bash
 kubectl get pods -n crossplane-system
 ```
-*(Once running, you can skip the Terraform steps entirely and proceed directly to **Step 2**!)*
 
 ---
 
