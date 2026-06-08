@@ -76,6 +76,8 @@ kubectl get pods -n crossplane-system
 
 *Use this option if you want to avoid the **~$73/month** cost of running an AWS EKS control plane. Crossplane will run locally but will still successfully reach out to AWS to provision your cloud resources.*
 
+> **💡 Key Concept:** Running Crossplane on Docker Desktop does **not** create local databases or "Docker RDS"! The Crossplane *control plane* runs on your laptop, but when you apply the manifests, it uses your AWS credentials to call the AWS API and build **real, production-ready** services (S3, RDS, DynamoDB) in the actual AWS cloud.
+
 **1. Enable Kubernetes in Docker Desktop:**
 Open Docker Desktop navigate to **Settings > Kubernetes** and check **Enable Kubernetes**. Apply and wait for the cluster to start (this takes a few minutes). 
 
