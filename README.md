@@ -221,12 +221,6 @@ kubectl get instances.rds.aws.upbound.io
 kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 ```
 
-**Use the Crossplane CLI to trace a resource and see its full dependency tree and status:**
-```bash
-crossplane trace bucket.s3.aws.upbound.io crossplane-demo-bucket-xyz123
-crossplane trace instance.rds.aws.upbound.io crossplane-demo-db
-```
-
 ## Troubleshooting & Logs
 
 **1. Viewing and Describing Crossplane Pods**
@@ -261,6 +255,15 @@ kubectl get secret aws-creds -n crossplane-system -o jsonpath='{.data.creds}' | 
 AWS_SHARED_CREDENTIALS_FILE=test-creds.temp aws sts get-caller-identity
 rm test-creds.temp
 ```
+
+**What to do if `aws sts get-caller-identity` succeeds but Crossplane still fails with `InvalidClientTokenId`:**
+This usually happens because the Crossplane Provider Pod has *cached* a previous, invalid version of your AWS credentials, or the secret was updated but the Pod hasn't picked up the new values yet. 
+
+Restart the provider pods to force them to read the newest credentials:
+```bash
+kubectl delete pods -n crossplane-system --all
+```
+*(Wait a minute for the pods to recreate, and Crossplane will automatically retry the connection!)*
 
 **3. Fixing `crossplane top` (Metrics Server Error)**
 If you try to run `crossplane top` and get an error about `metrics-server`, it's because AWS EKS does not install the Kubernetes Metrics Server by default. You can install it with one command:
