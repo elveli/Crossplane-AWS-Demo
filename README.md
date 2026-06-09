@@ -176,6 +176,10 @@ kubectl apply -f crossplane-manifests/6-dynamodb-table.yaml
 
 ## Step 5: Useful Crossplane & Kubectl Commands
 
+> **💡 The Magic of a Universal API:**
+> One of the core benefits of Crossplane is that the control plane is entirely decoupled from the resources it manages. **Every single command below works exactly the same** whether your control plane is running on a massive AWS EKS cluster or locally on Docker Desktop! 
+> *(If using Docker Desktop, just ensure you are using the local context: `kubectl config use-context docker-desktop`)*
+
 **Checking Overall Crossplane Health & Status:**
 Open-source Crossplane does not have a built-in web UI or a single health check URL. Instead, it operates natively within Kubernetes. You check its "overall" health by querying the Kubernetes API:
 
