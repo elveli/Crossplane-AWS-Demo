@@ -246,7 +246,23 @@ kubectl logs -n crossplane-system -l app=crossplane
 kubectl logs -n crossplane-system <provider-aws-pod-name>
 ```
 
-**2. Fixing `crossplane top` (Metrics Server Error)**
+**2. Validating AWS Credentials in Kubernetes**
+If your resources are failing with an AWS credentials error (e.g., `STS: GetCallerIdentity ... InvalidClientTokenId`), you can validate exactly what credentials Crossplane sees inside its Kubernetes Secret:
+
+```bash
+# 1. Check if the secret exists
+kubectl get secret aws-creds -n crossplane-system
+
+# 2. Extract and decode the credentials Crossplane is using
+kubectl get secret aws-creds -n crossplane-system -o jsonpath='{.data.creds}' | base64 --decode
+
+# 3. (Optional) Save to a file and validate them with the AWS CLI to ensure they are active
+kubectl get secret aws-creds -n crossplane-system -o jsonpath='{.data.creds}' | base64 --decode > test-creds.temp
+AWS_SHARED_CREDENTIALS_FILE=test-creds.temp aws sts get-caller-identity
+rm test-creds.temp
+```
+
+**3. Fixing `crossplane top` (Metrics Server Error)**
 If you try to run `crossplane top` and get an error about `metrics-server`, it's because AWS EKS does not install the Kubernetes Metrics Server by default. You can install it with one command:
 
 ```bash
@@ -289,6 +305,14 @@ You generally do not edit these pods directly. Instead, you manipulate them thro
   ```bash
   kubectl delete pod -n crossplane-system -l pkg.crossplane.io/provider=provider-family-aws
   ```
+
+**5. How are these AWS resources actually created? Crossplane or Terraform?**
+When you apply a manifest like `4-rds-instance.yaml`, **Crossplane** is the orchestrator that intercepts the Kubernetes request. However, if you describe a failing resource, you might notice error messages mentioning "Terraform" in the logs (e.g., `cannot initialize the Terraform plugin SDK`).
+
+Here is how it works under the hood when using the official Upbound AWS Providers:
+- **No `terraform` CLI or `.tf` files are used.** You do not write or execute any Terraform code to provision these specific AWS resources.
+- Instead, the Upbound AWS Provider is built dynamically using a framework that wraps the official HashiCorp Terraform AWS SDK. It embeds the Terraform logic natively into the Golang provider to handle the actual API calls to AWS without running the Terraform CLI.
+- So, Crossplane relies on the mature, battle-tested Terraform Provider SDK **under the hood** to communicate with AWS, but from your perspective as a user, you only ever write Kubernetes YAML manifests and Crossplane fully abstracts away the Terraform state and lifecycle!
 
 ## Cleanup
 
