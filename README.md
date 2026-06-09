@@ -265,6 +265,28 @@ kubectl delete pods -n crossplane-system --all
 ```
 *(Wait a minute for the pods to recreate, and Crossplane will automatically retry the connection!)*
 
+**What to do if `aws sts get-caller-identity` FAILS with `InvalidClientTokenId`:**
+This means the credentials stored in the `aws-creds` Kubernetes secret are genuinely invalid, expired, or incomplete. This frequently happens if you are using temporary AWS credentials (e.g., from AWS SSO or `aws sts assume-role`) but forgot to include the session token.
+
+1. Create a fresh `aws-credentials.txt` file. If using temporary credentials, you **must** include the `aws_session_token`:
+```ini
+[default]
+aws_access_key_id = YOUR_ACCESS_KEY
+aws_secret_access_key = YOUR_SECRET_KEY
+aws_session_token = YOUR_SESSION_TOKEN_IF_APPLICABLE
+```
+
+2. Recreate the secret in your cluster:
+```bash
+kubectl delete secret aws-creds -n crossplane-system
+kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./aws-credentials.txt
+```
+
+3. Restart the Provider Pods to pick up the new secret immediately:
+```bash
+kubectl delete pods -n crossplane-system --all
+```
+
 **3. Fixing `crossplane top` (Metrics Server Error)**
 If you try to run `crossplane top` and get an error about `metrics-server`, it's because AWS EKS does not install the Kubernetes Metrics Server by default. You can install it with one command:
 
