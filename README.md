@@ -223,8 +223,8 @@ kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 
 **Use the Crossplane CLI to trace a resource and see its full dependency tree and status:**
 ```bash
-crossplane beta trace bucket.s3.aws.upbound.io crossplane-demo-bucket-xyz123
-crossplane beta trace instance.rds.aws.upbound.io crossplane-demo-db
+crossplane trace bucket.s3.aws.upbound.io crossplane-demo-bucket-xyz123
+crossplane trace instance.rds.aws.upbound.io crossplane-demo-db
 ```
 
 ## Troubleshooting & Logs
@@ -246,13 +246,13 @@ kubectl logs -n crossplane-system -l app=crossplane
 kubectl logs -n crossplane-system <provider-aws-pod-name>
 ```
 
-**2. Fixing `crossplane beta top` (Metrics Server Error)**
-If you try to run `crossplane beta top` and get an error about `metrics-server`, it's because AWS EKS does not install the Kubernetes Metrics Server by default. You can install it with one command:
+**2. Fixing `crossplane top` (Metrics Server Error)**
+If you try to run `crossplane top` and get an error about `metrics-server`, it's because AWS EKS does not install the Kubernetes Metrics Server by default. You can install it with one command:
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
-Wait about 60 seconds for it to start collecting data, and then `crossplane beta top` will work perfectly!
+Wait about 60 seconds for it to start collecting data, and then `crossplane top` will work perfectly!
 
 **3. Viewing Logs for AWS Resources (S3, RDS, IAM)**
 It is important to understand that Crossplane provisions **real AWS managed services**, not Kubernetes Pods. 
