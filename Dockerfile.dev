@@ -1,0 +1,22 @@
+# Development Dockerfile with hot reload support
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install development dependencies
+RUN npm install --global @vite/cli
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies with dev packages
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Expose ports
+EXPOSE 5173 3000
+
+# Run dev server with --host to allow external connections
+CMD ["npm", "run", "dev"]

@@ -1,9 +1,67 @@
+# Dependencies
 node_modules/
+package-lock.json
+
+# Build artifacts
 build/
 dist/
 coverage/
-.DS_Store
-*.log
-.env*
+
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
 !.env.example
 creds.conf
+aws-credentials.txt
+credentials
+
+# Terraform state files (⚠️ CONTAINS SENSITIVE DATA)
+terraform/.tfstate
+terraform/.tfstate.*
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/.terraformrc
+terraform/terraform.log
+*.tfvars
+*.tfvars.json
+!example.tfvars
+
+# OS & IDE files
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.env.local
+
+# Logs & debugging
+*.log
+logs/
+debug-logs/
+.npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cache
+node_modules/.cache/
+.cache/
+.eslintcache
+
+# Misc
+.turbo/
+dist-ssr/
+*.egg-info/
+.pytest_cache/
+__pycache__/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
