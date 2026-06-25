@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+coverage
+.next
+.turbo
+.DS_Store
+*.log
+.env
+.env.local
+.terraform
+terraform/.tfstate*

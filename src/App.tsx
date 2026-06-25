@@ -2,7 +2,18 @@ import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Folder, File, ChevronRight, ChevronDown, BookOpen, Code, Search, Copy, AlertCircle, X } from 'lucide-react';
+import {
+  Folder,
+  File,
+  ChevronRight,
+  ChevronDown,
+  BookOpen,
+  Code,
+  Search,
+  Copy,
+  AlertCircle,
+  X,
+} from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -63,7 +74,10 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
 // Load files dynamically using Vite's import.meta.glob
 const tfFilesRaw = import.meta.glob('../terraform/*', { query: '?raw', import: 'default' });
-const cpFilesRaw = import.meta.glob('../crossplane-manifests/*', { query: '?raw', import: 'default' });
+const cpFilesRaw = import.meta.glob('../crossplane-manifests/*', {
+  query: '?raw',
+  import: 'default',
+});
 const readmeRaw = import.meta.glob('../README.md', { query: '?raw', import: 'default' });
 
 type FileNode = {
@@ -189,7 +203,10 @@ function AppContent() {
     setFileTree(newTree);
   };
 
-  const searchFiles = (nodes: (FileNode | FolderNode)[], query: string): (FileNode | FolderNode)[] => {
+  const searchFiles = (
+    nodes: (FileNode | FolderNode)[],
+    query: string
+  ): (FileNode | FolderNode)[] => {
     if (!query.trim()) return nodes;
 
     return nodes
@@ -305,7 +322,9 @@ function AppContent() {
       <div className="w-64 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col">
         <div className="p-4 border-b border-slate-800 flex items-center gap-2">
           <BookOpen size={18} className="text-blue-400" />
-          <h1 className="font-semibold text-sm tracking-wide uppercase text-slate-300">Crossplane Demo</h1>
+          <h1 className="font-semibold text-sm tracking-wide uppercase text-slate-300">
+            Crossplane Demo
+          </h1>
         </div>
 
         {/* Search Bar */}
@@ -361,10 +380,16 @@ function AppContent() {
               <div className="max-w-4xl mx-auto p-8 prose prose-invert prose-blue text-slate-300">
                 <ReactMarkdown
                   components={{
-                    h1: ({ node, ...props }) => <h1 className="text-3xl font-bold mt-6 mb-4" {...props} />,
-                    h2: ({ node, ...props }) => <h2 className="text-2xl font-bold mt-5 mb-3" {...props} />,
-                    h3: ({ node, ...props }) => <h3 className="text-xl font-bold mt-4 mb-2" {...props} />,
-                    code: ({ node, inline, ...props }) =>
+                    h1: ({ _node, ...props }: any) => (
+                      <h1 className="text-3xl font-bold mt-6 mb-4" {...props} />
+                    ),
+                    h2: ({ _node, ...props }: any) => (
+                      <h2 className="text-2xl font-bold mt-5 mb-3" {...props} />
+                    ),
+                    h3: ({ _node, ...props }: any) => (
+                      <h3 className="text-xl font-bold mt-4 mb-2" {...props} />
+                    ),
+                    code: ({ _node, inline, ...props }: any) =>
                       inline ? (
                         <code
                           className="bg-slate-800 px-2 py-1 rounded text-blue-300 font-mono text-sm"
