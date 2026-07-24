@@ -120,6 +120,25 @@ make aws-status
 kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 ```
 
+### Makefile Command Reference
+
+```text
+make install          Install frontend dependencies
+make dev              Start the Vite development server
+make build            Build the frontend for production
+make lint             Run TypeScript checks
+make format           Format the source files with Prettier
+make aws-secret       Create/update the Crossplane AWS credentials secret
+make aws-secret-file  Create the secret from a specific credentials file
+make aws-db-secret    Create/update the DB password secret
+make aws-setup        Apply the full Crossplane resource stack
+make aws-status       Show installed providers and managed resources
+make tf-init          Initialize Terraform
+make tf-plan          Plan Terraform changes
+make tf-apply         Apply Terraform changes
+make tf-destroy       Destroy Terraform-managed resources
+```
+
 > The Makefile wraps the most common Kubernetes and Crossplane commands so you do not need to remember the full `kubectl apply -f ...` sequence every time.
 
 ---
