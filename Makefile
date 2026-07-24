@@ -1,5 +1,5 @@
 # Development & Build Commands
-.PHONY: help install dev build preview clean lint format test push deploy
+.PHONY: help install dev build preview clean lint format test push deploy aws-secret aws-secret-file aws-db-secret aws-setup aws-status
 
 help:
 	@echo "Crossplane AWS Demo - Available Commands"
@@ -21,6 +21,13 @@ help:
 	@echo "  make docker-dev       Build development Docker image"
 	@echo "  make docker-run       Run production container"
 	@echo "  make docker-compose   Start stack with docker-compose"
+	@echo ""
+	@echo "AWS / Crossplane:"
+	@echo "  make aws-secret       Create or update the AWS credentials secret"
+	@echo "  make aws-secret-file  Create the AWS credentials secret from a specific file"
+	@echo "  make aws-db-secret    Create or update the DB password secret"
+	@echo "  make aws-setup        Apply the full Crossplane resource stack"
+	@echo "  make aws-status       Show providers and managed resources"
 	@echo ""
 	@echo "Terraform:"
 	@echo "  make tf-init      Initialize Terraform"
@@ -61,6 +68,33 @@ format:
 
 format-check:
 	npx prettier --check src/ tsconfig.json vite.config.ts
+
+# Kubernetes / Crossplane
+aws-secret:
+	@if [ -f "$$HOME/.aws/credentials" ]; then \
+		kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=$$HOME/.aws/credentials --dry-run=client -o yaml | kubectl apply -f -; \
+	else \
+		echo "No AWS credentials file found at $$HOME/.aws/credentials"; \
+		exit 1; \
+	fi
+
+aws-secret-file FILE=./creds.conf:
+	kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=$(FILE) --dry-run=client -o yaml | kubectl apply -f -
+
+aws-db-secret PASSWORD=SuperSecret123!:
+	kubectl create secret generic db-password --from-literal=password=$(PASSWORD) --dry-run=client -o yaml | kubectl apply -f -
+
+aws-setup:
+	kubectl apply -f crossplane-manifests/1-providers.yaml
+	kubectl apply -f crossplane-manifests/2-providerconfig.yaml
+	kubectl apply -f crossplane-manifests/3-s3-bucket.yaml
+	kubectl apply -f crossplane-manifests/4-rds-instance.yaml
+	kubectl apply -f crossplane-manifests/5-iam-role.yaml
+	kubectl apply -f crossplane-manifests/6-dynamodb-table.yaml
+
+aws-status:
+	kubectl get providers
+	kubectl get managed
 
 # Docker
 docker-build:

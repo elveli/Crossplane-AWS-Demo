@@ -111,28 +111,24 @@ Running this specific Crossplane demo on AWS will cost approximately **$0.25 per
 
 ```bash
 # 1. Start Crossplane (choose one)
-Option A: On Docker Desktop (FREE)
-  Enable Kubernetes in Docker Desktop settings, then:
-  helm install crossplane crossplane-stable/crossplane --namespace crossplane-system --create-namespace
+# Option A: Docker Desktop (FREE)
+helm install crossplane crossplane-stable/crossplane --namespace crossplane-system --create-namespace
 
-Option B: On AWS EKS (~$0.25/hour)
-  cd terraform && terraform apply
+# Option B: AWS EKS (~$0.25/hour)
+cd terraform && terraform apply -auto-approve
 
 # 2. Configure AWS credentials
-kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=$HOME/.aws/credentials
+make aws-secret
 
 # 3. Install providers and provision resources
-kubectl apply -f crossplane-manifests/1-providers.yaml
-kubectl apply -f crossplane-manifests/2-providerconfig.yaml
-kubectl apply -f crossplane-manifests/3-s3-bucket.yaml    # S3
-kubectl apply -f crossplane-manifests/4-rds-instance.yaml  # PostgreSQL database
-kubectl apply -f crossplane-manifests/5-iam-role.yaml      # IAM role
-kubectl apply -f crossplane-manifests/6-dynamodb-table.yaml # DynamoDB
+make aws-setup
 
 # 4. View your resources
-kubectl get managed
+make aws-status
 kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 ```
+
+> The Makefile wraps the most common Kubernetes and Crossplane commands so you do not need to remember the full `kubectl apply -f ...` sequence every time.
 
 ---
 
@@ -195,27 +191,25 @@ kubectl get pods -n crossplane-system
 
 ## Step 2: Configure AWS Credentials for Crossplane
 
-Crossplane needs AWS credentials to provision resources. Create a temporary `creds.conf` file in your **current directory** (the root of this project) with your AWS credentials:
-
-```ini
-[default]
-aws_access_key_id = YOUR_ACCESS_KEY
-aws_secret_access_key = YOUR_SECRET_KEY
-```
-
-*(Note: You can also just point to your existing AWS credentials file in the next step if you prefer).*
-
-Create a Kubernetes secret in the `crossplane-system` namespace using this file:
+Crossplane needs AWS credentials to provision resources. The easiest path is to use the Makefile target below, which reads your existing AWS credentials file and creates the Kubernetes secret for you:
 
 ```bash
-# If using the local creds.conf file:
-kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=./creds.conf
+make aws-secret
+```
 
-# OR, if using your existing AWS credentials file:
+If you want to use a different file instead of `~/.aws/credentials`, pass it explicitly:
+
+```bash
+make aws-secret-file FILE=./creds.conf
+```
+
+If you prefer to create the secret manually, the equivalent `kubectl` command is:
+
+```bash
 kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=$HOME/.aws/credentials
 ```
 
-> **⚠️ Security Warning:** `creds.conf` contains your plaintext AWS secrets. **Do not commit this file to Git.** Delete it immediately after running the command above:
+> **⚠️ Security Warning:** `creds.conf` contains your plaintext AWS secrets. **Do not commit this file to Git.** Delete it immediately after running the command:
 > ```bash
 > rm creds.conf
 > ```
@@ -242,27 +236,27 @@ kubectl apply -f crossplane-manifests/2-providerconfig.yaml
 
 ## Step 4: Provision AWS Resources via Crossplane
 
-Now you can provision AWS resources using standard Kubernetes manifests!
+Now you can provision AWS resources using standard Kubernetes manifests. The cleanest way is to let the Makefile apply the full sequence for you:
 
-**1. Create an S3 Bucket:**
+```bash
+make aws-db-secret PASSWORD=SuperSecret123!
+make aws-setup
+```
+
+The `make aws-setup` target applies these manifests in order:
+
+- S3 bucket: `crossplane-manifests/3-s3-bucket.yaml`
+- RDS PostgreSQL instance: `crossplane-manifests/4-rds-instance.yaml`
+- IAM role: `crossplane-manifests/5-iam-role.yaml`
+- DynamoDB table: `crossplane-manifests/6-dynamodb-table.yaml`
+
+If you prefer the raw `kubectl` form, the equivalent commands are:
+
 ```bash
 kubectl apply -f crossplane-manifests/3-s3-bucket.yaml
-```
-
-**2. Create an RDS PostgreSQL Instance:**
-```bash
-# Note: You must create a secret for the DB password first
 kubectl create secret generic db-password --from-literal=password=SuperSecret123!
 kubectl apply -f crossplane-manifests/4-rds-instance.yaml
-```
-
-**3. Create an IAM Role:**
-```bash
 kubectl apply -f crossplane-manifests/5-iam-role.yaml
-```
-
-**4. Create a DynamoDB Table (Provisions in seconds!):**
-```bash
 kubectl apply -f crossplane-manifests/6-dynamodb-table.yaml
 ```
 
