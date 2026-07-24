@@ -31,37 +31,29 @@ This demo bridges the gap between Kubernetes and AWS by provisioning:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     AWS Account                                 │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                   EKS Cluster                            │  │
-│  │  ┌────────────────────────────────────────────────────┐  │  │
-│  │  │         Crossplane Control Plane                  │  │  │
-│  │  │  ┌──────────────────────────────────────────────┐ │  │  │
-│  │  │  │  Crossplane Operators                       │ │  │  │
-│  │  │  │  - AWS Provider (S3, RDS, IAM, DynamoDB)  │ │  │  │
-│  │  │  │  - Continuous Reconciliation Loop         │ │  │  │
-│  │  │  │  - Secret Management                      │ │  │  │
-│  │  │  └──────────────────────────────────────────┘ │  │  │
-│  │  └────────────────────────────────────────────────┘  │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                              │                               │
-│                              │ kubectl apply -f              │
-│                              ▼                               │
-│  ┌────────────────┬──────────────────┬────────────────┐    │
-│  │   S3 Bucket    │  RDS Database    │   IAM Role     │    │
-│  │                │  (PostgreSQL)    │                │    │
-│  │  (Object       │                  │  Provides      │    │
-│  │   Storage)     │  + Auto Secret   │  Access        │    │
-│  │                │    Management    │  Control       │    │
-│  └────────────────┴──────────────────┴────────────────┘    │
-│                                                             │
-│  Additional Resources:                                      │
-│  - DynamoDB Table (NoSQL)                                   │
-│  - VPC with NAT Gateway for private subnet access           │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
++------------------------------+-------------------------------------------+
+| AWS Account                  |                                           |
+|                              |                                           |
+|  EKS Cluster                 |                                           |
+|  ┌────────────────────────┐  |                                           |
+|  │ Crossplane Control     │  |                                           |
+|  │ Plane                  │  |                                           |
+|  │ • AWS Provider         │  |                                           |
+|  │ • Reconciliation       │  |                                           |
+|  │ • Secret Mgmt          │  |                                           |
+|  └────────────────────────┘  |                                           |
++------------------------------+-------------------------------------------+
+| kubectl apply -f                                                   |
+|                                                                      |
+|  S3 Bucket      |  RDS Database      |  IAM Role                    |
+|  (Object Store) |  (PostgreSQL)      |  (Access)                   |
+|                 |  + Auto Secret     |                             |
+|                 |    Management      |                             |
++-----------------+--------------------+------------------------------+
+| Additional Resources:                                               |
+| • DynamoDB Table (NoSQL)                                            |
+| • VPC with NAT Gateway for private subnet access                    |
++---------------------------------------------------------------------+
 ```
 
 ### Key Architecture Points:
