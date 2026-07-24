@@ -30,30 +30,30 @@ This demo bridges the gap between Kubernetes and AWS by provisioning:
 
 ## Architecture
 
-```
-+------------------------------+-------------------------------------------+
-| AWS Account                  |                                           |
-|                              |                                           |
-|  EKS Cluster                 |                                           |
-|  ┌────────────────────────┐  |                                           |
-|  │ Crossplane Control     │  |                                           |
-|  │ Plane                  │  |                                           |
-|  │ • AWS Provider         │  |                                           |
-|  │ • Reconciliation       │  |                                           |
-|  │ • Secret Mgmt          │  |                                           |
-|  └────────────────────────┘  |                                           |
-+------------------------------+-------------------------------------------+
+```text
++----------------------+-----------------------------------------------+
+| AWS Account          |                                               |
+|                      |                                               |
+| EKS Cluster          |                                               |
+|  +------------------+|                                               |
+|  | Crossplane       ||                                               |
+|  | Control Plane    ||                                               |
+|  | • AWS Provider   ||                                               |
+|  | • Reconciliation ||                                               |
+|  | • Secret Mgmt    ||                                               |
+|  +------------------+|                                               |
++----------------------+-----------------------------------------------+
 | kubectl apply -f                                                   |
-|                                                                      |
-|  S3 Bucket      |  RDS Database      |  IAM Role                    |
-|  (Object Store) |  (PostgreSQL)      |  (Access)                   |
-|                 |  + Auto Secret     |                             |
-|                 |    Management      |                             |
-+-----------------+--------------------+------------------------------+
-| Additional Resources:                                               |
-| • DynamoDB Table (NoSQL)                                            |
-| • VPC with NAT Gateway for private subnet access                    |
-+---------------------------------------------------------------------+
+|                                                                   |
+| S3 Bucket      | RDS Database      | IAM Role                      |
+| (Object Store) | (PostgreSQL)      | (Access)                     |
+|                | + Auto Secret     |                              |
+|                |   Management      |                              |
++----------------+-------------------+------------------------------+
+| Additional Resources:                                              |
+| • DynamoDB Table (NoSQL)                                           |
+| • VPC with NAT Gateway for private subnet access                   |
++--------------------------------------------------------------------+
 ```
 
 ### Key Architecture Points:
