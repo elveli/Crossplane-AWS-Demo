@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Build artifacts
 build/
@@ -10,19 +9,20 @@ coverage/
 # Environment variables & secrets
 .env
 .env.local
-.env.*.local
+.env.*
 !.env.example
 creds.conf
 aws-credentials.txt
 credentials
 
 # Terraform state files (⚠️ CONTAINS SENSITIVE DATA)
-terraform/.tfstate
-terraform/.tfstate.*
-terraform/.terraform/
-terraform/.terraform.lock.hcl
-terraform/.terraformrc
-terraform/terraform.log
+**/.terraform/
+**/.terraform.lock.hcl
+**/.tfstate
+**/.tfstate.*
+**/terraform.tfstate*
+**/terraform.log
+**/.terraformrc
 *.tfvars
 *.tfvars.json
 !example.tfvars
@@ -38,7 +38,7 @@ terraform/terraform.log
 .idea/
 *.sublime-project
 *.sublime-workspace
-.env.local
+.history/
 
 # Logs & debugging
 *.log
