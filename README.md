@@ -351,6 +351,18 @@ kubectl get buckets.s3.aws.upbound.io
 kubectl get instances.rds.aws.upbound.io
 ```
 
+**Example output:**
+```text
+$ kubectl get buckets.s3.aws.upbound.io
+NAME                            SYNCED   READY   EXTERNAL-NAME                   AGE
+crossplane-demo-bucket-xyz123   True     True    crossplane-demo-bucket-xyz123   52m
+
+$ kubectl get instances.rds.aws.upbound.io
+NAME                 SYNCED   READY   EXTERNAL-NAME                   AGE
+crossplane-demo-db   True     True    db-F3PCKWMBTFMZVSSI3RIZJCYJWM   40m
+```
+Note the RDS `EXTERNAL-NAME` (`db-F3PCKWMBTFMZVSSI3RIZJCYJWM`) doesn't match the bucket's, which mirrors its own resource name. That's because the RDS manifest doesn't set an explicit `identifier`, so the provider auto-generates one rather than reusing the Crossplane object name.
+
 **Describe a resource to see events and status conditions:**
 ```bash
 kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
@@ -680,21 +692,23 @@ git push origin feature/your-improvement
 
 ## Cleanup
 
-First, delete the Crossplane managed resources:
+If you provisioned the EKS cluster using Terraform (Step 1), tear everything down in one shot:
+```bash
+make teardown
+```
+This deletes the Crossplane managed resources first (waiting for Crossplane to delete the actual AWS resources), then runs `terraform destroy -auto-approve` to remove the EKS cluster and networking. Note that it auto-approves the Terraform destroy without an extra confirmation prompt.
+
+Equivalently, step by step:
 ```bash
 kubectl delete -f crossplane-manifests/6-dynamodb-table.yaml
 kubectl delete -f crossplane-manifests/5-iam-role.yaml
 kubectl delete -f crossplane-manifests/4-rds-instance.yaml
 kubectl delete -f crossplane-manifests/3-s3-bucket.yaml
-```
 
-Wait for them to be deleted (Crossplane will delete the actual AWS resources).
-
-Then, if you provisioned the EKS cluster using Terraform (Step 1), destroy the infrastructure:
-```bash
 cd terraform
 terraform destroy -auto-approve
 ```
+
 *(If you ran this locally on Docker Desktop, simply uninstall the Helm release from your local cluster instead: `helm uninstall crossplane --namespace crossplane-system`)*
 
 ---

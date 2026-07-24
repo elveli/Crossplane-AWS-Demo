@@ -1,5 +1,5 @@
 # Development & Build Commands
-.PHONY: help npm-install dev npm-build preview test deploy aws-secret aws-secret-file aws-db-secret aws-setup aws-status crossplane-install crossplane-status logs-crossplane logs-s3 logs-rds logs-iam logs-dynamodb inventory kubeconfig pods nodes nodegroups crossplane-resources crossplane-watch
+.PHONY: help npm-install dev npm-build preview test deploy aws-secret aws-secret-file aws-db-secret aws-setup teardown aws-status crossplane-install crossplane-status logs-crossplane logs-s3 logs-rds logs-iam logs-dynamodb inventory kubeconfig pods nodes nodegroups crossplane-resources crossplane-watch
 
 AWS_ACCOUNT_ID := $(shell aws sts get-caller-identity --query Account --output text 2>/dev/null)
 BUCKET ?= crossplane-demo-tfstate$(if $(AWS_ACCOUNT_ID),-$(AWS_ACCOUNT_ID),)
@@ -27,6 +27,7 @@ help:
 	@printf "  %-18s %s\n" "make aws-secret-file" "Create the AWS credentials secret from a specific file"
 	@printf "  %-18s %s\n" "make aws-db-secret" "Create or update the DB password secret"
 	@printf "  %-18s %s\n" "make aws-setup" "Apply the full Crossplane resource stack"
+	@printf "  %-18s %s\n" "make teardown" "Delete Crossplane resources, then destroy Terraform infrastructure"
 	@printf "  %-18s %s\n" "make aws-status" "Show providers and managed resources"
 	@printf "  %-18s %s\n" "make crossplane-install" "Install or upgrade Crossplane via Helm"
 	@printf "  %-18s %s\n" "make crossplane-status" "Show Crossplane pods and release status"
@@ -89,6 +90,13 @@ aws-setup:
 	kubectl apply -f crossplane-manifests/4-rds-instance.yaml
 	kubectl apply -f crossplane-manifests/5-iam-role.yaml
 	kubectl apply -f crossplane-manifests/6-dynamodb-table.yaml
+
+teardown:
+	kubectl delete -f crossplane-manifests/6-dynamodb-table.yaml
+	kubectl delete -f crossplane-manifests/5-iam-role.yaml
+	kubectl delete -f crossplane-manifests/4-rds-instance.yaml
+	kubectl delete -f crossplane-manifests/3-s3-bucket.yaml
+	cd terraform && terraform destroy -auto-approve
 
 aws-status:
 	kubectl get providers.pkg.crossplane.io
