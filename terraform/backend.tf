@@ -10,14 +10,11 @@
 
 terraform {
   backend "s3" {
-    # REQUIRED: Update these values before using
-    bucket         = "crossplane-demo-tfstate-REPLACE-WITH-UNIQUE-ID"  # Must be globally unique
+    bucket         = "crossplane-demo-tfstate"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
-    
-    # Security & State Management
-    encrypt        = true                           # Enable encryption at rest
-    dynamodb_table = "terraform-locks"              # Table for state locking (prevents concurrent applies)
+    encrypt        = true
+    dynamodb_table = "terraform-locks"
   }
 }
 

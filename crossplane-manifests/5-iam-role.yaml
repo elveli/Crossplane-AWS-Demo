@@ -17,5 +17,7 @@ spec:
           }
         ]
       }
+    tags:
+      Project: crossplane-demo
   providerConfigRef:
     name: default

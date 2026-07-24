@@ -16,6 +16,8 @@ spec:
       name: db-password
       namespace: default
       key: password
+    tags:
+      Project: crossplane-demo
   providerConfigRef:
     name: default
   writeConnectionSecretToRef:

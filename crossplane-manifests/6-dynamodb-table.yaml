@@ -10,5 +10,7 @@ spec:
     attribute:
       - name: id
         type: S
+    tags:
+      Project: crossplane-demo
   providerConfigRef:
     name: default

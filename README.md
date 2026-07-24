@@ -123,16 +123,19 @@ kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 ### Makefile Command Reference
 
 ```text
-make install          Install frontend dependencies
+make npm-install      Install frontend dependencies
 make dev              Start the Vite development server
-make build            Build the frontend for production
-make lint             Run TypeScript checks
-make format           Format the source files with Prettier
+make npm-build        Build the frontend for production
 make aws-secret       Create/update the Crossplane AWS credentials secret
 make aws-secret-file  Create the secret from a specific credentials file
 make aws-db-secret    Create/update the DB password secret
 make aws-setup        Apply the full Crossplane resource stack
 make aws-status       Show installed providers and managed resources
+make logs-crossplane  Tail logs from the core Crossplane pod
+make logs-s3          Tail logs from the AWS S3 provider
+make logs-rds         Tail logs from the AWS RDS provider
+make logs-iam         Tail logs from the AWS IAM provider
+make logs-dynamodb    Tail logs from the AWS DynamoDB provider
 make tf-init          Initialize Terraform
 make tf-plan          Plan Terraform changes
 make tf-apply         Apply Terraform changes
@@ -291,6 +294,41 @@ kubectl get providers
 kubectl get managed
 ```
 If `READY` is `True` and `SYNCED` is `True` for your providers and managed resources, your Crossplane environment is healthy.
+
+**Example output (healthy environment):**
+```text
+$ kubectl get pods -n crossplane-system
+NAME                                                        READY   STATUS    RESTARTS   AGE
+crossplane-7686c8bdf8-5lvrx                                 1/1     Running   0          25m
+crossplane-rbac-manager-8669d6f47b-z7vdr                    1/1     Running   0          25m
+provider-aws-dynamodb-51906f5a7129-69cfd4bd75-8cvzn         1/1     Running   0          21m
+provider-aws-iam-1195525b7589-7d84c5459c-pp2zv              1/1     Running   0          22m
+provider-aws-rds-cffcb6120554-cb47ddbcf-6qw6g               1/1     Running   0          22m
+provider-aws-s3-d17766e0e571-67466fc7c5-9rrv8               1/1     Running   0          21m
+upbound-provider-family-aws-72b4e62c1086-7676846567-pn8t8   1/1     Running   0          22m
+
+$ kubectl get providers
+NAME                          INSTALLED   HEALTHY   PACKAGE                                                 AGE
+provider-aws-dynamodb         True        True      xpkg.upbound.io/upbound/provider-aws-dynamodb:v1.14.0   22m
+provider-aws-iam              True        True      xpkg.upbound.io/upbound/provider-aws-iam:v1.14.0        22m
+provider-aws-rds              True        True      xpkg.upbound.io/upbound/provider-aws-rds:v1.14.0        23m
+provider-aws-s3               True        True      xpkg.upbound.io/upbound/provider-aws-s3:v1.14.0         23m
+upbound-provider-family-aws   True        True      xpkg.upbound.io/upbound/provider-family-aws:v2.6.2      22m
+
+$ kubectl get managed
+NAME                                                  SYNCED   READY   EXTERNAL-NAME           AGE
+table.dynamodb.aws.upbound.io/crossplane-demo-table   True     True    crossplane-demo-table   21m
+
+NAME                                           SYNCED   READY   EXTERNAL-NAME          AGE
+role.iam.aws.upbound.io/crossplane-demo-role   True     True    crossplane-demo-role   21m
+
+NAME                                             SYNCED   READY   EXTERNAL-NAME                   AGE
+instance.rds.aws.upbound.io/crossplane-demo-db   True     True    db-F3PCKWMBTFMZVSSI3RIZJCYJWM   8m57s
+
+NAME                                                     SYNCED   READY   EXTERNAL-NAME                   AGE
+bucket.s3.aws.upbound.io/crossplane-demo-bucket-xyz123   True     True    crossplane-demo-bucket-xyz123   21m
+```
+`kubectl get managed` groups output by resource kind (one table per kind), which is why you see four separate headers above instead of one combined list. The `provider-*` pods are the AWS-specific controllers (S3, RDS, IAM, DynamoDB) that get installed in Step 3 — `crossplane` and `crossplane-rbac-manager` are the only pods present right after Step 1/2, before any providers are installed.
 
 **Viewing the Generated RDS Secret:**
 Crossplane automatically writes the RDS connection details to a Kubernetes secret. *(Note: RDS instances take 5-10 minutes to provision in AWS. The secret will not be fully populated with the endpoint and password until the instance status is `READY=True`)*.
