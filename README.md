@@ -1,6 +1,8 @@
 # Crossplane on AWS Demo
 
-This repository contains a complete demonstration of [Crossplane](https://crossplane.io/) running on Amazon Web Services (AWS). It uses Terraform to provision the underlying EKS cluster and Helm to install Crossplane, followed by Crossplane manifests to provision AWS resources directly from Kubernetes.
+A hands-on demo of [Crossplane](https://crossplane.io/): you write Kubernetes YAML, and Crossplane creates real AWS resources (S3, RDS PostgreSQL, IAM, DynamoDB) and keeps them in the declared state.
+
+You can run the Crossplane control plane **locally on Docker Desktop** (cheapest, ~5 minutes) or on **AWS EKS provisioned with Terraform** (production-like). See [Choose Your Path](#choose-your-path).
 
 > **📋 Code Review & Improvements**: See [CLAUDE.MD](./CLAUDE.MD) for detailed code analysis, security recommendations, and improvement suggestions.
 
@@ -9,59 +11,87 @@ This repository contains a complete demonstration of [Crossplane](https://crossp
 - [What Does This Demo Implement?](#what-does-this-demo-implement)
 - [Architecture](#architecture)
 - [Benefits of Crossplane](#benefits-of-crossplane)
-- [Repository Structure](#repository-structure)
+- [Choose Your Path](#choose-your-path): **Local (Docker Desktop)** or **AWS (EKS)**
 - [Prerequisites](#prerequisites)
 - [Cost Estimate](#cost-estimate)
-- [Quick Start](#quick-start)
-- [Development Setup](#development-setup)
-- [Usage Guide](#usage-guide)
-- [Troubleshooting](#troubleshooting)
+- [Path A: Local Control Plane on Docker Desktop](#path-a-local-control-plane-on-docker-desktop)
+- [Path B: AWS Control Plane on EKS (Terraform)](#path-b-aws-control-plane-on-eks-terraform)
+- [Shared Steps (Both Paths)](#shared-steps-both-paths)
+- [Exploring Your Resources](#exploring-your-resources)
 - [Cleanup](#cleanup)
+- [Troubleshooting](#troubleshooting)
+- [Frontend: Interactive File Browser](#frontend-interactive-file-browser) (runs in Docker)
+- [Makefile Command Reference](#makefile-command-reference)
+- [Repository Structure](#repository-structure)
 - [FAQ](#faq)
 - [Contributing](#contributing)
 
 ## What Does This Demo Implement?
 
-This demo bridges the gap between Kubernetes and AWS by provisioning:
-1. **An EKS Cluster (via Terraform):** The control plane where Crossplane lives.
+This demo bridges the gap between Kubernetes and AWS:
+1. **A Crossplane control plane**, either on Docker Desktop (local) or on an EKS cluster provisioned by Terraform.
 2. **An S3 Bucket:** Demonstrates provisioning simple object storage.
 3. **An RDS PostgreSQL Database:** Demonstrates provisioning complex, stateful infrastructure. **Why RDS?** We include RDS to showcase one of Crossplane's most powerful features: seamless secret management. When Crossplane creates the database, it automatically writes the connection details (endpoint, port, username, password) directly into a Kubernetes Secret. Your application Pods can instantly mount this secret and connect to the database without any manual hand-offs or external secret managers.
 4. **An IAM Role:** Demonstrates managing cloud security and identity alongside your apps.
+5. **A DynamoDB Table:** Demonstrates a serverless, pay-per-request NoSQL resource.
 
 ## Architecture
 
 ```text
-+----------------------+-----------------------------------------------+
-| AWS Account          |                                               |
-|                      |                                               |
-| EKS Cluster          |                                               |
-|  +------------------+|                                               |
-|  | Crossplane       ||                                               |
-|  | Control Plane    ||                                               |
-|  | • AWS Provider   ||                                               |
-|  | • Reconciliation ||                                               |
-|  | • Secret Mgmt    ||                                               |
-|  +------------------+|                                               |
-+----------------------+-----------------------------------------------+
-| kubectl apply -f                                                   |
-|                                                                   |
-| S3 Bucket      | RDS Database      | IAM Role                      |
-| (Object Store) | (PostgreSQL)      | (Access)                     |
-|                | + Auto Secret     |                              |
-|                |   Management      |                              |
-+----------------+-------------------+------------------------------+
-| Additional Resources:                                              |
-| • DynamoDB Table (NoSQL)                                           |
-| • VPC with NAT Gateway for private subnet access                   |
-+--------------------------------------------------------------------+
+ Developer workstation
+ +---------------------------------------------------------------------+
+ |  (1) terraform apply                (2) make aws-setup              |
+ |      terraform/*.tf                     kubectl apply -f            |
+ |                                         crossplane-manifests/       |
+ +-------------|--------------------------------------|----------------+
+               | provisions                           | desired state
+               v                                      v
+ +---------------------------------------------------------------------+
+ | AWS Account (us-east-1)                                             |
+ |                                                                     |
+ |  VPC 10.0.0.0/16 - 3 AZs, public + private subnets, 1 NAT Gateway   |
+ |  +---------------------------------------------------------------+  |
+ |  | EKS cluster "crossplane-demo-cluster" (Kubernetes 1.31)       |  |
+ |  | Managed node group: 2-4 x t3/t3a/t2.medium (Spot)             |  |
+ |  |                                                               |  |
+ |  |  namespace: default                                           |  |
+ |  |   Secret "db-password"             -> RDS master password     |  |
+ |  |   Secret "crossplane-demo-db-conn" <- RDS endpoint/user/pass  |  |
+ |  |                                       (written by Crossplane) |  |
+ |  |                                                               |  |
+ |  |  namespace: crossplane-system                                 |  |
+ |  |  +---------------------------------------------------------+  |  |
+ |  |  | Crossplane 1.15 (Helm)                                  |  |  |
+ |  |  |  Providers: aws-s3 | aws-rds | aws-iam | aws-dynamodb   |  |  |
+ |  |  |  ProviderConfig "default"  <--  Secret "aws-creds"      |  |  |
+ |  |  +----------------------------+----------------------------+  |  |
+ |  +-------------------------------|-------------------------------+  |
+ |                                  | continuous reconcile             |
+ |                                  | (create / update / fix drift)    |
+ |        +--------------+----------+---+-------------+                |
+ |        v              v              v             v                |
+ |  +-----------+ +-------------+ +-----------+ +-----------+          |
+ |  | S3 Bucket | | RDS         | | IAM Role  | | DynamoDB  |          |
+ |  |           | | PostgreSQL  | |           | | Table     |          |
+ |  |           | | 16          | |           | |           |          |
+ |  |           | | db.t3.micro | |           | |           |          |
+ |  +-----------+ +-------------+ +-----------+ +-----------+          |
+ |                                                                     |
+ +---------------------------------------------------------------------+
+
+ Teardown: make teardown -> kubectl delete (managed resources first),
+           then terraform destroy (EKS, VPC, NAT Gateway)
 ```
+
+> The diagram shows **Path B (AWS)**. On **Path A (Local)**, the VPC and EKS boxes are replaced by Docker Desktop on your laptop. Everything inside the cluster, and every AWS resource below it, stays the same.
 
 ### Key Architecture Points:
 
-1. **Control Plane**: EKS cluster runs Crossplane operators
-2. **Data Plane**: AWS resources managed through Crossplane YAML (not direct AWS console access)
-3. **Drift Detection**: Continuous reconciliation ensures desired state
-4. **Secret Management**: Database credentials automatically written to Kubernetes Secrets
+1. **Bootstrap (Terraform)**: Provisions the VPC, EKS cluster, Spot node group, and installs Crossplane via Helm
+2. **Control Plane (Crossplane)**: Runs inside EKS with one Upbound provider per AWS service (S3, RDS, IAM, DynamoDB)
+3. **Managed Resources (YAML)**: AWS resources are declared as Kubernetes manifests and created through `kubectl apply`, not the AWS console
+4. **Drift Detection**: Continuous reconciliation reverts manual changes back to the desired state
+5. **Secret Management**: RDS connection details are written back into the `crossplane-demo-db-conn` Kubernetes Secret
 
 ## Benefits of Crossplane
 
@@ -70,229 +100,227 @@ This demo bridges the gap between Kubernetes and AWS by provisioning:
 - **Continuous Reconciliation:** Unlike Terraform which only checks state when you run `terraform apply`, Crossplane runs as a continuous control loop. If someone manually modifies your S3 bucket in the AWS Console, Crossplane will instantly detect the drift and revert it to the desired state.
 - **No More State Files:** The Kubernetes `etcd` database acts as your state file.
 
-## Repository Structure
+## Choose Your Path
 
-- `terraform/`: Contains the Terraform code to provision an AWS VPC, an EKS cluster, and install Crossplane via Helm.
-- `crossplane-manifests/`: Contains the Kubernetes YAML manifests to configure the AWS Provider and provision AWS resources (S3, RDS, IAM).
+Crossplane needs a Kubernetes cluster to run on. That cluster is only the **control plane**: wherever it runs, the S3 bucket, RDS database, IAM role and DynamoDB table are always created as **real resources in your AWS account**.
+
+You pick where the control plane runs:
+
+| | **Path A: Local (Docker Desktop)** | **Path B: AWS (EKS via Terraform)** |
+|---|---|---|
+| Where Crossplane runs | Kubernetes built into Docker Desktop on your laptop | EKS cluster in your AWS account |
+| What gets created in AWS | S3, RDS, IAM role, DynamoDB | Same, **plus** VPC, NAT Gateway, EKS cluster, Spot nodes |
+| Approx. cost | ~$0.02/hour (mostly RDS) | ~$0.25/hour |
+| Time to a running cluster | ~5 minutes | ~15-20 minutes |
+| Needs Terraform | No | Yes |
+| Best for | Learning Crossplane, quick demos | Production-like setup, learning EKS too |
+
+> **💡 Not sure? Start with Path A.** Every Crossplane step after the cluster setup is identical, so you can move to Path B later without relearning anything.
+
+```text
+ Path A: Local                          Path B: AWS
+ +-------------------------------+      +-------------------------------+
+ | A1. Enable Kubernetes in      |      | B1. terraform apply           |
+ |     Docker Desktop            |      |     (VPC, EKS, Crossplane)    |
+ | A2. make crossplane-install   |      | B2. make kubeconfig           |
+ +---------------+---------------+      +---------------+---------------+
+                 |                                      |
+                 +------------------+-------------------+
+                                    v
+              +-------------------------------------------+
+              | Shared steps (same commands for both)     |
+              |  1. make aws-secret       AWS credentials |
+              |  2. make aws-db-secret    RDS password    |
+              |  3. make aws-setup        providers + AWS |
+              |  4. make crossplane-watch wait for READY  |
+              +---------------------+---------------------+
+                                    v
+              +-------------------------------------------+
+              | Cleanup (per path, see below)             |
+              +-------------------------------------------+
+```
 
 ## Prerequisites
 
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with Administrator access
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- [Crossplane CLI](https://docs.crossplane.io/latest/cli/)
-- [Helm](https://helm.sh/docs/intro/install/)
+| Tool | Path A (Local) | Path B (AWS) |
+|---|:---:|:---:|
+| [AWS account](https://aws.amazon.com/) + [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) with credentials in `~/.aws/credentials` | ✅ | ✅ |
+| [kubectl](https://kubernetes.io/docs/tasks/tools/) | ✅ | ✅ |
+| [Helm](https://helm.sh/docs/intro/install/) | ✅ | ✅ |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) (with Kubernetes enabled) | ✅ | optional (frontend only) |
+| [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0 | | ✅ |
+| [Crossplane CLI](https://docs.crossplane.io/latest/cli/) | optional | optional |
+
+The AWS credentials need permission to create S3, RDS, IAM and DynamoDB resources (Path A), plus VPC, EC2 and EKS resources (Path B).
 
 ## Cost Estimate
 
-Running this specific Crossplane demo on AWS will cost approximately **$0.25 per hour** (or about **$185 per month** if left running continuously) in the `us-east-1` region. If you spin it up for a 2-hour learning session and then destroy it, it will only cost you about **$0.50**.
+Prices are for `us-east-1`. **Both paths create billable AWS resources**, so always run [Cleanup](#cleanup) when you are done.
 
-**Breakdown of costs:**
-- **EKS Control Plane:** ~$0.10 per hour (~$73.00/month)
-- **EC2 Worker Nodes:** 2x `t3.medium` instances at ~$0.0416 per hour each = ~$0.083 per hour (~$60.75/month)
-- **NAT Gateway:** 1 NAT Gateway at ~$0.045 per hour = ~$32.85/month
-- **EBS Storage:** Default EBS volumes for worker nodes = ~$3.20/month
-- **RDS PostgreSQL Instance:** 1x `db.t3.micro` instance at ~$0.018 per hour = ~$13.14/month (plus ~$2.30/month for 20GB storage)
-- **S3 Bucket & IAM Role:** Negligible / Free
+**Path A: Local** (about **$0.02/hour**)
+- **RDS PostgreSQL** `db.t3.micro`: ~$0.018/hour, plus ~$2.30/month for 20 GB storage
+- **S3, IAM role, DynamoDB** (pay-per-request): negligible at demo scale
+- **Control plane:** free, it runs on your laptop
 
-> **⚠️ Important:** To avoid a surprise AWS bill, **always remember to tear down the environment** as soon as you are done testing. See the [Cleanup](#cleanup) section at the bottom of this README.
+**Path B: AWS** (about **$0.25/hour**, or ~$185/month if left running)
+- Everything in Path A, plus:
+- **EKS control plane:** ~$0.10/hour (~$73/month)
+- **Worker nodes:** 2x `t3.medium`-class instances. At on-demand prices that is ~$0.083/hour; the node group uses **Spot**, which is usually considerably cheaper
+- **NAT Gateway:** ~$0.045/hour (~$32.85/month)
+- **EBS volumes** for the nodes: ~$3.20/month
 
-## Quick Start
-
-### 30 Second Overview
-
-```bash
-# 1. Start Crossplane (choose one)
-# Option A: Docker Desktop (FREE)
-helm install crossplane crossplane-stable/crossplane --namespace crossplane-system --create-namespace
-
-# Option B: AWS EKS (~$0.25/hour)
-cd terraform && terraform apply -auto-approve
-
-# 2. Configure AWS credentials
-make aws-secret
-
-# 3. Install providers and provision resources
-make aws-setup
-
-# 4. View your resources
-make aws-status
-kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
-```
-
-### Makefile Command Reference
-
-```text
-make npm-install      Install frontend dependencies
-make dev              Start the Vite development server
-make npm-build        Build the frontend for production
-make aws-secret       Create/update the Crossplane AWS credentials secret
-make aws-secret-file  Create the secret from a specific credentials file
-make aws-db-secret    Create/update the DB password secret
-make aws-setup        Apply the full Crossplane resource stack
-make aws-status       Show installed providers and managed resources
-make logs-crossplane  Tail logs from the core Crossplane pod
-make logs-s3          Tail logs from the AWS S3 provider
-make logs-rds         Tail logs from the AWS RDS provider
-make logs-iam         Tail logs from the AWS IAM provider
-make logs-dynamodb    Tail logs from the AWS DynamoDB provider
-make tf-init          Initialize Terraform
-make tf-plan          Plan Terraform changes
-make tf-apply         Apply Terraform changes
-make tf-destroy       Destroy Terraform-managed resources
-```
-
-> The Makefile wraps the most common Kubernetes and Crossplane commands so you do not need to remember the full `kubectl apply -f ...` sequence every time.
+A 2-hour learning session on Path B costs roughly **$0.50**.
 
 ---
 
-## Step 1: Choose Your Environment
+## Path A: Local Control Plane on Docker Desktop
 
-To run Crossplane, you need a Kubernetes cluster to serve as its control plane. You can choose to provision a real cluster in AWS, or run it entirely on your local machine. Choose **Option A** or **Option B** below:
+Crossplane runs on your laptop and calls the AWS API with your credentials. No EKS, VPC or Terraform is involved.
 
-### Option A: Provision EKS via Terraform (AWS)
+> **💡 Key concept:** This does **not** create local databases or a "Docker RDS". Only the Crossplane *control plane* runs locally; the S3 bucket, RDS instance and so on are created in the **real AWS cloud**.
 
-*Use this option if you want a production-like EKS environment. This will incur AWS costs.*
+### A1. Enable Kubernetes in Docker Desktop
 
-Navigate to the `terraform` directory and apply the configuration:
+1. Open Docker Desktop → **Settings → Kubernetes**.
+2. Check **Enable Kubernetes**, then **Apply & Restart**. Wait until the status shows Kubernetes as running (a few minutes).
+3. Point `kubectl` at the local cluster and check it responds:
+
+```bash
+kubectl config use-context docker-desktop
+kubectl get nodes
+```
+
+### A2. Install Crossplane with Helm
+
+On Path B, Terraform installs Crossplane for you. Locally, you install it yourself:
+
+```bash
+make crossplane-install
+make crossplane-status     # crossplane + crossplane-rbac-manager pods should be Running
+```
+
+<details>
+<summary>Equivalent raw commands</summary>
+
+```bash
+helm repo add crossplane-stable https://charts.crossplane.io/stable
+helm repo update
+helm upgrade --install crossplane crossplane-stable/crossplane \
+  --namespace crossplane-system --create-namespace
+kubectl get pods -n crossplane-system
+```
+</details>
+
+✅ **Done.** Continue with the [Shared Steps](#shared-steps-both-paths).
+
+---
+
+## Path B: AWS Control Plane on EKS (Terraform)
+
+Terraform creates a VPC, an EKS cluster with Spot worker nodes, and installs Crossplane on it with Helm.
+
+### B1. Provision EKS with Terraform
 
 ```bash
 cd terraform
 terraform init
-terraform apply -auto-approve
+terraform apply        # review the plan, then type "yes"; takes ~15-20 minutes
+cd ..
 ```
 
-Once complete, configure your local `kubectl` to connect to the new EKS cluster:
+> **Note:** [terraform/backend.tf](terraform/backend.tf) stores state in an S3 bucket. Create the bucket and lock table first with `make tf-backend-create`, or remove `backend.tf` to keep state locally.
+
+### B2. Connect kubectl to the cluster
 
 ```bash
-aws eks update-kubeconfig --region us-east-1 --name crossplane-demo-cluster
+make kubeconfig            # runs: aws eks update-kubeconfig --name crossplane-demo-cluster
+make crossplane-status     # crossplane + crossplane-rbac-manager pods should be Running
 ```
 
-Verify Crossplane is running:
-
-```bash
-kubectl get pods -n crossplane-system
-```
-
-### Option B: Run Locally on Docker Desktop (Save Money!)
-
-*Use this option if you want to avoid the **~$73/month** cost of running an AWS EKS control plane. Crossplane will run locally but will still successfully reach out to AWS to provision your cloud resources.*
-
-> **💡 Key Concept:** Running Crossplane on Docker Desktop does **not** create local databases or "Docker RDS"! The Crossplane *control plane* runs on your laptop, but when you apply the manifests, it uses your AWS credentials to call the AWS API and build **real, production-ready** services (S3, RDS, DynamoDB) in the actual AWS cloud.
-
-**1. Enable Kubernetes in Docker Desktop:**
-Open Docker Desktop navigate to **Settings > Kubernetes** and check **Enable Kubernetes**. Apply and wait for the cluster to start (this takes a few minutes). 
-
-Ensure your local `kubectl` context is set to Docker Desktop:
-```bash
-kubectl config use-context docker-desktop
-```
-
-**2. Install Crossplane using Helm:**
-Since you aren't using the Terraform scripts (which install Crossplane automatically on EKS), you need to install it on your local cluster:
-```bash
-helm repo add crossplane-stable https://charts.crossplane.io/stable
-helm repo update
-helm install crossplane crossplane-stable/crossplane --namespace crossplane-system --create-namespace
-```
-
-**3. Verify Crossplane is running:**
-```bash
-kubectl get pods -n crossplane-system
-```
+✅ **Done.** Continue with the [Shared Steps](#shared-steps-both-paths).
 
 ---
 
-## Step 2: Configure AWS Credentials for Crossplane
+## Shared Steps (Both Paths)
 
-Crossplane needs AWS credentials to provision resources. The easiest path is to use the Makefile target below, which reads your existing AWS credentials file and creates the Kubernetes secret for you:
+From here on, **every command is identical** whether Crossplane runs on Docker Desktop or EKS. `kubectl` just talks to whichever cluster your current context points at:
 
 ```bash
-make aws-secret
+kubectl config current-context   # docker-desktop (Path A) or the EKS cluster ARN (Path B)
 ```
 
-If you want to use a different file instead of `~/.aws/credentials`, pass it explicitly:
+### Step 1: Give Crossplane your AWS credentials
+
+Crossplane reads AWS credentials from the Kubernetes Secret `aws-creds` in `crossplane-system`:
 
 ```bash
+make aws-secret                              # uses ~/.aws/credentials
+# or, from a different file:
 make aws-secret-file FILE=./creds.conf
 ```
 
-If you prefer to create the secret manually, the equivalent `kubectl` command is:
+> **⚠️ Temporary credentials (SSO / assume-role):** the file must include `aws_session_token`, and the secret has to be refreshed when the session expires. See [Troubleshooting](#troubleshooting).
+>
+> **⚠️ Never commit a credentials file to Git.** Delete any copy such as `creds.conf` after creating the secret.
+
+### Step 2: Create the RDS master password
+
+The RDS manifest reads its password from the Secret `db-password`. Create it **before** applying the manifests:
 
 ```bash
-kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=$HOME/.aws/credentials
+make aws-db-secret PASSWORD='SuperSecret123!'
 ```
 
-> **⚠️ Security Warning:** `creds.conf` contains your plaintext AWS secrets. **Do not commit this file to Git.** Delete it immediately after running the command:
-> ```bash
-> rm creds.conf
-> ```
-
-## Step 3: Install Upbound AWS Providers
-
-Apply the provider manifests to install the AWS S3, RDS, and IAM providers:
+### Step 3: Install providers and provision AWS resources
 
 ```bash
-kubectl apply -f crossplane-manifests/1-providers.yaml
-```
-
-Wait for the providers to become healthy:
-
-```bash
-kubectl get providers
-```
-
-Apply the ProviderConfig to tell the providers to use the secret we created:
-
-```bash
-kubectl apply -f crossplane-manifests/2-providerconfig.yaml
-```
-
-## Step 4: Provision AWS Resources via Crossplane
-
-Now you can provision AWS resources using standard Kubernetes manifests. The cleanest way is to let the Makefile apply the full sequence for you:
-
-```bash
-make aws-db-secret PASSWORD=SuperSecret123!
 make aws-setup
 ```
 
-The `make aws-setup` target applies these manifests in order:
+This single target:
 
-- S3 bucket: `crossplane-manifests/3-s3-bucket.yaml`
-- RDS PostgreSQL instance: `crossplane-manifests/4-rds-instance.yaml`
-- IAM role: `crossplane-manifests/5-iam-role.yaml`
-- DynamoDB table: `crossplane-manifests/6-dynamodb-table.yaml`
+1. Installs the Upbound AWS providers (`1-providers.yaml`) and **waits** until they are healthy (up to 10 min)
+2. Applies the `ProviderConfig` that points them at `aws-creds` (`2-providerconfig.yaml`)
+3. Creates the AWS resources: S3 bucket, RDS PostgreSQL, IAM role, DynamoDB table (`3-` to `6-*.yaml`)
 
-If you prefer the raw `kubectl` form, the equivalent commands are:
+<details>
+<summary>Equivalent raw commands</summary>
 
 ```bash
+kubectl apply -f crossplane-manifests/1-providers.yaml
+kubectl wait --for=condition=Healthy providers.pkg.crossplane.io --all --timeout=10m
+kubectl apply -f crossplane-manifests/2-providerconfig.yaml
 kubectl apply -f crossplane-manifests/3-s3-bucket.yaml
-kubectl create secret generic db-password --from-literal=password=SuperSecret123!
 kubectl apply -f crossplane-manifests/4-rds-instance.yaml
 kubectl apply -f crossplane-manifests/5-iam-role.yaml
 kubectl apply -f crossplane-manifests/6-dynamodb-table.yaml
 ```
+</details>
 
-## Step 5: Useful Crossplane & Kubectl Commands
-
-> **💡 The Magic of a Universal API:**
-> One of the core benefits of Crossplane is that the control plane is entirely decoupled from the resources it manages. **Every single command below works exactly the same** whether your control plane is running on a massive AWS EKS cluster or locally on Docker Desktop! 
-> *(If using Docker Desktop, just ensure you are using the local context: `kubectl config use-context docker-desktop`)*
-
-**Checking Overall Crossplane Health & Status:**
-Open-source Crossplane does not have a built-in web UI or a single health check URL. Instead, it operates natively within Kubernetes. You check its "overall" health by querying the Kubernetes API:
+### Step 4: Watch the resources become ready
 
 ```bash
-# 1. Check if the core Crossplane pods are running
-kubectl get pods -n crossplane-system
-
-# 2. Check if all installed Providers (like AWS) are healthy and ready
-kubectl get providers
-
-# 3. View the status of ALL infrastructure resources managed by Crossplane
-kubectl get managed
+make crossplane-watch      # refreshes every 10s; Ctrl+C to stop
 ```
+
+S3, IAM and DynamoDB are usually ready within a minute. **RDS takes 5-10 minutes.** Everything is healthy when `SYNCED` and `READY` are both `True`.
+
+✅ **You now manage AWS infrastructure through Kubernetes.** Next: [explore what you built](#exploring-your-resources), and when you are finished, **[clean up](#cleanup)**.
+
+---
+
+## Exploring Your Resources
+
+> These commands work the same on both paths.
+
+**Overall Crossplane health.** Open-source Crossplane has no web UI; you check its health through the Kubernetes API:
+
+```bash
+kubectl get pods -n crossplane-system   # core + provider pods
+kubectl get providers                   # INSTALLED and HEALTHY should be True
+kubectl get managed                     # every AWS resource Crossplane manages
+```
+
 If `READY` is `True` and `SYNCED` is `True` for your providers and managed resources, your Crossplane environment is healthy.
 
 **Example output (healthy environment):**
@@ -328,7 +356,7 @@ instance.rds.aws.upbound.io/crossplane-demo-db   True     True    db-F3PCKWMBTFM
 NAME                                                     SYNCED   READY   EXTERNAL-NAME                   AGE
 bucket.s3.aws.upbound.io/crossplane-demo-bucket-xyz123   True     True    crossplane-demo-bucket-xyz123   21m
 ```
-`kubectl get managed` groups output by resource kind (one table per kind), which is why you see four separate headers above instead of one combined list. The `provider-*` pods are the AWS-specific controllers (S3, RDS, IAM, DynamoDB) that get installed in Step 3 — `crossplane` and `crossplane-rbac-manager` are the only pods present right after Step 1/2, before any providers are installed.
+`kubectl get managed` groups output by resource kind (one table per kind), which is why you see four separate headers above instead of one combined list. The `provider-*` pods are the AWS-specific controllers (S3, RDS, IAM, DynamoDB) installed by `make aws-setup`. Right after Crossplane is installed, only `crossplane` and `crossplane-rbac-manager` are present.
 
 **Viewing the Generated RDS Secret:**
 Crossplane automatically writes the RDS connection details to a Kubernetes secret. *(Note: RDS instances take 5-10 minutes to provision in AWS. The secret will not be fully populated with the endpoint and password until the instance status is `READY=True`)*.
@@ -368,7 +396,91 @@ Note the RDS `EXTERNAL-NAME` (`db-F3PCKWMBTFMZVSSI3RIZJCYJWM`) doesn't match the
 kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 ```
 
-## Troubleshooting & Logs
+### Working with the Database
+
+```bash
+# Endpoint, username and password written by Crossplane
+kubectl get secret crossplane-demo-db-conn -o jsonpath='{.data.endpoint}' | base64 --decode
+kubectl get secret crossplane-demo-db-conn -o jsonpath='{.data.username}' | base64 --decode
+kubectl get secret crossplane-demo-db-conn -o jsonpath='{.data.password}' | base64 --decode
+```
+
+> The instance is created with `publiclyAccessible: false`, so `psql` from your laptop won't connect. Connect from a Pod or host that has network access to the instance.
+
+**Change a resource declaratively:** patch the manifest, and Crossplane reconciles AWS to match:
+
+```bash
+kubectl patch instance.rds crossplane-demo-db --type merge \
+  -p '{"spec":{"forProvider":{"instanceClass":"db.t3.small"}}}'
+```
+
+---
+
+## Cleanup
+
+> **⚠️ Do this on both paths.** Even on Path A, the RDS instance and other resources live in AWS and keep billing until Crossplane deletes them. **Delete the managed resources first, while Crossplane is still running**; if you remove Crossplane or the cluster first, nothing is left to delete them and they stay running in AWS.
+
+### Path A: Local
+
+```bash
+# 1. Delete the AWS resources (Crossplane removes them from AWS)
+kubectl delete -f crossplane-manifests/6-dynamodb-table.yaml
+kubectl delete -f crossplane-manifests/5-iam-role.yaml
+kubectl delete -f crossplane-manifests/4-rds-instance.yaml
+kubectl delete -f crossplane-manifests/3-s3-bucket.yaml
+
+# 2. Wait until nothing is left (RDS deletion takes a few minutes)
+kubectl get managed
+
+# 3. Remove Crossplane from Docker Desktop
+helm uninstall crossplane --namespace crossplane-system
+```
+
+Optionally, turn off Kubernetes in Docker Desktop afterwards (**Settings → Kubernetes**).
+
+> Don't use `make teardown` on Path A: it also runs `terraform destroy`, which is only meant for Path B.
+
+### Path B: AWS
+
+```bash
+make teardown
+```
+
+This deletes the Crossplane managed resources first, then runs `terraform destroy -auto-approve` to remove the EKS cluster, nodes, NAT Gateway and VPC. **There is no extra confirmation prompt.**
+
+<details>
+<summary>Equivalent raw commands</summary>
+
+```bash
+kubectl delete -f crossplane-manifests/6-dynamodb-table.yaml
+kubectl delete -f crossplane-manifests/5-iam-role.yaml
+kubectl delete -f crossplane-manifests/4-rds-instance.yaml
+kubectl delete -f crossplane-manifests/3-s3-bucket.yaml
+kubectl get managed        # wait until empty
+
+cd terraform
+terraform destroy
+```
+</details>
+
+### Verify nothing is left in AWS
+
+```bash
+make inventory     # lists EKS clusters, RDS instances, S3 buckets and DynamoDB tables in us-east-1
+```
+
+---
+
+## Troubleshooting
+
+**0. `kubectl` is talking to the wrong cluster**
+If you have used both paths, check which cluster you are on before anything else:
+
+```bash
+kubectl config current-context
+kubectl config use-context docker-desktop     # Path A
+make kubeconfig                               # Path B
+```
 
 **1. Viewing and Describing Crossplane Pods**
 Crossplane and its providers run as standard Kubernetes Pods in the `crossplane-system` namespace. If something isn't working, checking their status, events, and logs is the best place to look:
@@ -435,14 +547,14 @@ kubectl delete pods -n crossplane-system --all
 ```
 
 **3. Fixing `crossplane top` (Metrics Server Error)**
-If you try to run `crossplane top` and get an error about `metrics-server`, it's because AWS EKS does not install the Kubernetes Metrics Server by default. You can install it with one command:
+If you try to run `crossplane top` and get an error about `metrics-server`, it's because neither EKS nor Docker Desktop installs the Kubernetes Metrics Server by default. You can install it with one command:
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 Wait about 60 seconds for it to start collecting data, and then `crossplane top` will work perfectly!
 
-**3. Viewing Logs for AWS Resources (S3, RDS, IAM)**
+**4. Viewing Logs for AWS Resources (S3, RDS, IAM)**
 It is important to understand that Crossplane provisions **real AWS managed services**, not Kubernetes Pods. 
 - Because an RDS database or S3 bucket is not a Pod, **you cannot run `kubectl logs` on them.**
 - To view the actual database logs or S3 access logs, you must log into the **AWS Console** and use **AWS CloudWatch**.
@@ -455,7 +567,7 @@ It is important to understand that Crossplane provisions **real AWS managed serv
   kubectl describe instance.rds.aws.upbound.io crossplane-demo-db
   ```
 
-**4. Understanding and Managing Provider Pods (e.g., `upbound-provider-family-aws`)**
+**5. Understanding and Managing Provider Pods (e.g., `upbound-provider-family-aws`)**
 If you see a pod named `upbound-provider-family-aws-...`, this is the core AWS authentication and configuration controller. 
 
 Because AWS has hundreds of services, a single monolithic AWS provider would consume gigabytes of RAM. To fix this, Upbound splits the AWS provider into a **"family" provider** (which handles AWS credentials and shared logic) and smaller **service-specific providers** (like S3, RDS, IAM) to save memory.
@@ -478,7 +590,7 @@ You generally do not edit these pods directly. Instead, you manipulate them thro
   kubectl delete pod -n crossplane-system -l pkg.crossplane.io/provider=provider-family-aws
   ```
 
-**5. How are these AWS resources actually created? Crossplane or Terraform?**
+**6. How are these AWS resources actually created? Crossplane or Terraform?**
 When you apply a manifest like `4-rds-instance.yaml`, **Crossplane** is the orchestrator that intercepts the Kubernetes request. However, if you describe a failing resource, you might notice error messages mentioning "Terraform" in the logs (e.g., `cannot initialize the Terraform plugin SDK`).
 
 Here is how it works under the hood when using the official Upbound AWS Providers:
@@ -486,122 +598,90 @@ Here is how it works under the hood when using the official Upbound AWS Provider
 - Instead, the Upbound AWS Provider is built dynamically using a framework that wraps the official HashiCorp Terraform AWS SDK. It embeds the Terraform logic natively into the Golang provider to handle the actual API calls to AWS without running the Terraform CLI.
 - So, Crossplane relies on the mature, battle-tested Terraform Provider SDK **under the hood** to communicate with AWS, but from your perspective as a user, you only ever write Kubernetes YAML manifests and Crossplane fully abstracts away the Terraform state and lifecycle!
 
-## Development Setup
+---
 
-### Local Development with Docker Desktop
+## Frontend: Interactive File Browser
 
-```bash
-# 1. Clone this repository
-git clone https://github.com/yourusername/Crossplane-AWS-Demo.git
-cd Crossplane-AWS-Demo
+The repo includes a small React app that shows every Terraform file and Crossplane manifest in a browsable file tree. **It is optional and independent of both paths**: it only reads the files in this repo and never talks to your cluster or AWS.
 
-# 2. Install dependencies (frontend)
-npm install
+- **Left sidebar:** file tree with collapsible `terraform/` and `crossplane-manifests/` folders
+- **Top tab:** currently selected file
+- **Main area:** file contents with syntax highlighting
 
-# 3. Run the dev server locally
-npm run dev
-# Open http://localhost:3000
+### Option 1: Run in Docker (no Node.js needed)
 
-# 4. Enable Kubernetes on Docker Desktop
-# Settings > Kubernetes > ✓ Enable Kubernetes > Apply
+| Command | What it does | URL |
+|---|---|---|
+| `make docker-compose` | Builds the production image and runs it via `docker-compose up` | http://localhost:3000 |
+| `make docker-run` | Same, with plain `docker build` + `docker run` | http://localhost:3000 |
+| `make docker-compose-dev` | Dev container with hot reload; `src/`, manifests and Terraform are mounted from your checkout | http://localhost:3000 |
 
-# 5. Install Crossplane on your local cluster
-helm repo add crossplane-stable https://charts.crossplane.io/stable
-helm repo update
-helm install crossplane crossplane-stable/crossplane --namespace crossplane-system --create-namespace
+The production image ([Dockerfile](Dockerfile)) is a multi-stage build: Node 20 builds the static site, which is then served with `serve` as a non-root user, with a health check.
 
-# 6. Configure AWS credentials
-kubectl create secret generic aws-creds -n crossplane-system --from-file=creds=$HOME/.aws/credentials
-```
+Stop the container with `Ctrl+C` (or `docker-compose down`).
 
-### Project Structure
-
-```
-src/
-  ├── App.tsx            # Main React component with file tree UI
-  ├── main.tsx           # React entry point
-  └── index.css          # Tailwind styles
-terraform/
-  ├── main.tf            # VPC & EKS cluster definition
-  ├── providers.tf       # Terraform provider config
-  └── variables.tf       # Variable definitions
-crossplane-manifests/
-  ├── 1-providers.yaml           # AWS provider installation
-  ├── 2-providerconfig.yaml      # AWS credentials configuration
-  ├── 3-s3-bucket.yaml           # S3 bucket resource
-  ├── 4-rds-instance.yaml        # RDS PostgreSQL database
-  ├── 5-iam-role.yaml            # IAM role
-  └── 6-dynamodb-table.yaml      # DynamoDB table
-```
-
-### Available Scripts
+### Option 2: Run with Node.js
 
 ```bash
-npm run dev      # Start Vite dev server (port 3000)
-npm run build    # Build for production
-npm run preview  # Preview production build locally
-npm run clean    # Remove dist directory
-npm run lint     # Type-check with TypeScript
+make npm-install   # npm install
+make dev           # Vite dev server on http://localhost:3000
 ```
+
+| npm script | Purpose |
+|---|---|
+| `npm run dev` | Vite dev server (port 3000) |
+| `npm run build` | Production build into `dist/` |
+| `npm run preview` | Preview the production build |
+| `npm run lint` | TypeScript type-check + ESLint |
+| `npm run format` | Prettier |
+| `npm run clean` | Remove `dist/` |
 
 ---
 
-## Usage Guide
+## Makefile Command Reference
 
-### Understanding the Frontend UI
+Run `make help` for the full list. The most useful targets:
 
-The interactive file browser displays all configuration files:
-- **Left Sidebar**: File tree with collapsible folders for `terraform/` and `crossplane-manifests/`
-- **Top Tab**: Currently selected file name
-- **Main Area**: File contents with syntax highlighting
+| Area | Command | What it does |
+|---|---|---|
+| **Path A** | `make crossplane-install` | Install or upgrade Crossplane via Helm on the current cluster |
+| **Path B** | `make tf-backend-create` | Create the S3 state bucket and DynamoDB lock table |
+| | `make tf-init` / `tf-plan` / `tf-apply` | Terraform init / plan / apply |
+| | `make kubeconfig` | Point `kubectl` at the EKS cluster |
+| | `make nodes` / `make nodegroups` | Show nodes and EKS node groups (instance and capacity type) |
+| **Shared** | `make aws-secret` | Create the `aws-creds` secret from `~/.aws/credentials` |
+| | `make aws-secret-file FILE=...` | Same, from a specific file |
+| | `make aws-db-secret PASSWORD=...` | Create the RDS `db-password` secret |
+| | `make aws-setup` | Install providers and apply all AWS resource manifests |
+| | `make crossplane-status` | Crossplane pods and Helm release |
+| | `make aws-status` | Providers and ProviderConfigs |
+| | `make crossplane-resources` / `crossplane-watch` | Show (or watch) the managed AWS resources |
+| | `make logs-crossplane` / `logs-s3` / `logs-rds` / `logs-iam` / `logs-dynamodb` | Tail controller logs |
+| | `make inventory` | Check what actually exists in AWS |
+| **Cleanup** | `make teardown` | **Path B only:** delete managed resources, then `terraform destroy` |
+| **Frontend** | `make docker-compose` / `docker-run` / `dev` | Run the file browser UI |
 
-### Common Tasks
+---
 
-#### Provision S3 Bucket
-```bash
-kubectl apply -f crossplane-manifests/3-s3-bucket.yaml
-kubectl get bucket.s3
+## Repository Structure
+
 ```
-
-#### Provision RDS Database
-```bash
-# Create the DB password secret first
-kubectl create secret generic db-password --from-literal=password=YourSecurePassword123!
-
-# Apply the RDS manifest
-kubectl apply -f crossplane-manifests/4-rds-instance.yaml
-
-# Check status (takes 5-10 minutes)
-kubectl get instance.rds
-kubectl describe instance.rds crossplane-demo-db
-
-# View auto-generated connection secret
-kubectl get secret crossplane-demo-db-conn -o yaml
-```
-
-#### Access Database Connection Details
-```bash
-# Get hostname/endpoint
-kubectl get secret crossplane-demo-db-conn -o jsonpath='{.data.endpoint}' | base64 --decode
-
-# Get username
-kubectl get secret crossplane-demo-db-conn -o jsonpath='{.data.username}' | base64 --decode
-
-# Get password
-kubectl get secret crossplane-demo-db-conn -o jsonpath='{.data.password}' | base64 --decode
-
-# Connect with psql
-psql -h $(kubectl get secret crossplane-demo-db-conn -o jsonpath='{.data.endpoint}' | base64 --decode) \
-     -U postgresadmin -d postgres
-```
-
-#### Scale Resources
-```bash
-# Modify the RDS instance class
-kubectl patch instance.rds crossplane-demo-db --type merge \
-  -p '{"spec":{"forProvider":{"instanceClass":"db.t3.small"}}}'
-
-# Crossplane will reconcile the change automatically
+crossplane-manifests/          # Applied in order by `make aws-setup`
+  ├── 1-providers.yaml         # Upbound AWS providers (S3, RDS, IAM, DynamoDB)
+  ├── 2-providerconfig.yaml    # Points providers at the aws-creds secret
+  ├── 3-s3-bucket.yaml         # S3 bucket
+  ├── 4-rds-instance.yaml      # RDS PostgreSQL (writes crossplane-demo-db-conn secret)
+  ├── 5-iam-role.yaml          # IAM role
+  └── 6-dynamodb-table.yaml    # DynamoDB table
+terraform/                     # Path B only
+  ├── main.tf                  # VPC + EKS cluster with Spot node group
+  ├── crossplane.tf            # Crossplane Helm release
+  ├── backend.tf               # S3 remote state
+  ├── providers.tf, variables.tf, outputs.tf
+src/                           # Frontend file browser (React + Vite)
+Dockerfile, Dockerfile.dev, docker-compose.yml   # Frontend containers
+Makefile                       # Shortcuts for every step above
+docs/                          # Development, deployment and contributing guides
 ```
 
 ---
@@ -636,7 +716,7 @@ spec:
 ```
 
 ### Q: Is my AWS bill really that high?
-**A:** Yes, EKS control plane is ~$73/month. For learning, use Docker Desktop (free). For prod, use EKS for HA and auto-scaling.
+**A:** On Path B, yes: the EKS control plane alone is ~$73/month. On Path A (Docker Desktop) the control plane is free, and you only pay for the AWS resources Crossplane creates (mostly RDS, ~$0.02/hour). Either way, run [Cleanup](#cleanup) when you are done.
 
 ### Q: Can I use this with ArgoCD for GitOps?
 **A:** Absolutely! Push your manifests to a Git repo, and ArgoCD will sync them to your cluster. This is the recommended setup for production.
@@ -687,29 +767,6 @@ git push origin feature/your-improvement
 - `test:` Tests
 - `style:` Code style
 - `refactor:` Code refactoring
-
----
-
-## Cleanup
-
-If you provisioned the EKS cluster using Terraform (Step 1), tear everything down in one shot:
-```bash
-make teardown
-```
-This deletes the Crossplane managed resources first (waiting for Crossplane to delete the actual AWS resources), then runs `terraform destroy -auto-approve` to remove the EKS cluster and networking. Note that it auto-approves the Terraform destroy without an extra confirmation prompt.
-
-Equivalently, step by step:
-```bash
-kubectl delete -f crossplane-manifests/6-dynamodb-table.yaml
-kubectl delete -f crossplane-manifests/5-iam-role.yaml
-kubectl delete -f crossplane-manifests/4-rds-instance.yaml
-kubectl delete -f crossplane-manifests/3-s3-bucket.yaml
-
-cd terraform
-terraform destroy -auto-approve
-```
-
-*(If you ran this locally on Docker Desktop, simply uninstall the Helm release from your local cluster instead: `helm uninstall crossplane --namespace crossplane-system`)*
 
 ---
 
@@ -793,5 +850,4 @@ terraform destroy -auto-approve                 # Destroy all resources
 ```
 
 ---
-
 
