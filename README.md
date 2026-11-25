@@ -405,6 +405,16 @@ kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 
 ### Inspecting the "State File" (Kubernetes etcd)
 
+![Where Crossplane keeps its state](docs/crossplane-state.svg)
+
+> **Same on Path A and Path B?** Yes. Every `kubectl`, `jq` and `crossplane` command in this section goes through the Kubernetes API, so it works unchanged on Docker Desktop and EKS; it only depends on your current `kubectl` context. Two things differ:
+>
+> | | Path A (Docker Desktop) | Path B (EKS) |
+> |---|:---:|:---:|
+> | `kubectl` / `jq` / `crossplane beta trace` / backup export | ✅ | ✅ |
+> | Raw `etcdctl` access | ✅ (read-only) | ❌ etcd is managed by AWS |
+> | `terraform state` (VPC, EKS, Helm release) | ➖ no Terraform used | ✅ |
+
 Terraform keeps a `terraform.tfstate` file. Crossplane has none: **each managed resource object stored in the Kubernetes API (backed by etcd) is the state.** Everything Terraform would put in a state file lives on that object:
 
 | Field on the object | Equivalent in Terraform terms |
