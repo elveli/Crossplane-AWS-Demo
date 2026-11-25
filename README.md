@@ -37,6 +37,11 @@ This demo bridges the gap between Kubernetes and AWS:
 
 ## Architecture
 
+![Crossplane AWS Demo architecture](docs/architecture.svg)
+
+<details>
+<summary>ASCII version (for terminals)</summary>
+
 ```text
  Developer workstation
  +---------------------------------------------------------------------+
@@ -82,6 +87,8 @@ This demo bridges the gap between Kubernetes and AWS:
  Teardown: make teardown -> kubectl delete (managed resources first),
            then terraform destroy (EKS, VPC, NAT Gateway)
 ```
+
+</details>
 
 > The diagram shows **Path B (AWS)**. On **Path A (Local)**, the VPC and EKS boxes are replaced by Docker Desktop on your laptop. Everything inside the cluster, and every AWS resource below it, stays the same.
 
