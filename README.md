@@ -11,6 +11,7 @@ You can run the Crossplane control plane **locally on Docker Desktop** (cheapest
 - [What Does This Demo Implement?](#what-does-this-demo-implement)
 - [Architecture](#architecture)
 - [Benefits of Crossplane](#benefits-of-crossplane)
+- [Crossplane Glossary](#crossplane-glossary)
 - [Choose Your Path](#choose-your-path): **Local (Docker Desktop)** or **AWS (EKS)**
 - [Prerequisites](#prerequisites)
 - [Cost Estimate](#cost-estimate)
@@ -106,6 +107,25 @@ This demo bridges the gap between Kubernetes and AWS:
 - **Self-Service Infrastructure:** Developers can request databases, caches, or buckets by simply applying a Kubernetes YAML file, without needing to learn Terraform or wait for an infrastructure team.
 - **Continuous Reconciliation:** Unlike Terraform which only checks state when you run `terraform apply`, Crossplane runs as a continuous control loop. If someone manually modifies your S3 bucket in the AWS Console, Crossplane will instantly detect the drift and revert it to the desired state.
 - **No More State Files:** The Kubernetes `etcd` database acts as your state file. See [Inspecting the "State File"](#inspecting-the-state-file-kubernetes-etcd).
+
+## Crossplane Glossary
+
+| Term | Meaning | In this demo |
+|---|---|---|
+| **Managed resource (MR)** | A Kubernetes object that represents one real cloud resource. Create it and Crossplane creates the resource; delete it and Crossplane deletes it. Written as `<mr>` in commands. | `instance.rds.aws.upbound.io/crossplane-demo-db` |
+| **Provider** | A plug-in that teaches Crossplane one cloud API by adding new MR types to Kubernetes. Runs as a pod in `crossplane-system`. | `provider-aws-s3`, `-rds`, `-iam`, `-dynamodb` in [1-providers.yaml](crossplane-manifests/1-providers.yaml) |
+| **Provider family** | A shared parent provider, installed automatically, that handles AWS credentials and logic common to all the per-service providers. | `upbound-provider-family-aws` |
+| **ProviderConfig** | Tells providers how to authenticate: which credentials and which account. MRs refer to it by name. | `default` → Secret `aws-creds` ([2-providerconfig.yaml](crossplane-manifests/2-providerconfig.yaml)) |
+| **Reconcile** | The control loop that repeatedly compares an MR with the real resource and fixes any difference. | Runs on every change to an MR, and periodically on the provider's poll interval |
+| **Drift** | A difference between the desired state (YAML) and reality, for example someone changing the bucket in the AWS Console. Reconcile reverts it. | |
+| **`spec.forProvider`** | The settings you want on the cloud resource. | `engine: postgres`, `instanceClass: db.t3.micro` |
+| **`status.atProvider`** | What Crossplane last observed in the cloud (read-only). | RDS endpoint, ARN |
+| **External name** | The `crossplane.io/external-name` annotation: the real cloud ID that links an MR to its resource. | `db-F3PCKWMBTFMZVSSI3RIZJCYJWM` |
+| **SYNCED** | `True` when the last reconcile succeeded, meaning Crossplane could talk to AWS and apply the spec. | Column in `kubectl get managed` |
+| **READY** | `True` when the cloud resource is actually available to use. | RDS takes 5-10 minutes to become `True` |
+| **Connection secret** | A Kubernetes Secret Crossplane writes with the details needed to use a resource. Set with `writeConnectionSecretToRef`. | `crossplane-demo-db-conn` (endpoint, username, password) |
+| **Deletion policy** | What happens to the cloud resource when its MR is deleted: `Delete` (default) or `Orphan` (keep it in AWS). | Default `Delete`, see [FAQ](#faq) |
+| **Composition / XR** | Crossplane's way of bundling several MRs behind your own simple API (a composite resource, XR). | Not used here; a natural next step after this demo |
 
 ## Choose Your Path
 
