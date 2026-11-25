@@ -14,7 +14,7 @@
   <text x="30" y="36" font-size="18" font-weight="700" fill="#0F172A">Where Crossplane keeps its state</text>
 
   <!-- Terminal -->
-  <rect x="30" y="60" width="250" height="250" rx="10" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+  <rect x="30" y="60" width="250" height="426" rx="10" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
   <text x="48" y="86" font-size="14" font-weight="600" fill="#334155">Your terminal</text>
   <text x="48" y="104" font-size="11" fill="#64748B">talks to the current kubectl context</text>
   <g font-size="11" fill="#0F172A" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
@@ -22,10 +22,23 @@
     <text x="48" y="162">kubectl get managed -o json | jq</text>
     <text x="48" y="188">crossplane beta trace &lt;mr&gt;</text>
     <text x="48" y="214">kubectl get managed -o yaml</text>
-    <text x="48" y="230">  &gt; backup.yaml</text>
+    <text x="60" y="230">&gt; backup.yaml</text>
   </g>
-  <rect x="46" y="256" width="218" height="38" rx="19" fill="#DCFCE7" stroke="#16A34A"/>
-  <text x="155" y="280" font-size="12" font-weight="600" text-anchor="middle" fill="#166534">Identical on Path A and Path B</text>
+  <!-- Legend: what <mr> means -->
+  <rect x="46" y="246" width="218" height="170" rx="6" fill="#FEFCE8" stroke="#CA8A04"/>
+  <text x="56" y="266" font-size="11.5" font-weight="700" fill="#713F12"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, monospace">&lt;mr&gt;</tspan> = managed resource</text>
+  <text x="56" y="283" font-size="10.5" fill="#854D0E">the resource type + its name</text>
+  <text x="56" y="305" font-size="10.5" font-weight="600" fill="#713F12">Example:</text>
+  <g font-size="10" fill="#0F172A" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="56" y="323">kubectl get \</text>
+    <text x="68" y="339">instance.rds.aws.upbound.io \</text>
+    <text x="68" y="355">crossplane-demo-db -o yaml</text>
+  </g>
+  <text x="56" y="378" font-size="10.5" fill="#854D0E">Other types: bucket.s3…, role.iam…,</text>
+  <text x="56" y="394" font-size="10.5" fill="#854D0E">table.dynamodb.aws.upbound.io</text>
+
+  <rect x="46" y="432" width="218" height="38" rx="19" fill="#DCFCE7" stroke="#16A34A"/>
+  <text x="155" y="456" font-size="12" font-weight="600" text-anchor="middle" fill="#166534">Identical on Path A and Path B</text>
 
   <!-- Kubernetes API server -->
   <rect x="320" y="60" width="280" height="44" rx="8" fill="#EEF2FF" stroke="#4F46E5" stroke-width="1.5"/>
