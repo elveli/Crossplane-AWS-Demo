@@ -105,7 +105,7 @@ This demo bridges the gap between Kubernetes and AWS:
 - **A Single API (Kubernetes):** Manage your cloud infrastructure (AWS) and your applications using the exact same Kubernetes API and tools (`kubectl`, Helm, ArgoCD).
 - **Self-Service Infrastructure:** Developers can request databases, caches, or buckets by simply applying a Kubernetes YAML file, without needing to learn Terraform or wait for an infrastructure team.
 - **Continuous Reconciliation:** Unlike Terraform which only checks state when you run `terraform apply`, Crossplane runs as a continuous control loop. If someone manually modifies your S3 bucket in the AWS Console, Crossplane will instantly detect the drift and revert it to the desired state.
-- **No More State Files:** The Kubernetes `etcd` database acts as your state file.
+- **No More State Files:** The Kubernetes `etcd` database acts as your state file. See [Inspecting the "State File"](#inspecting-the-state-file-kubernetes-etcd).
 
 ## Choose Your Path
 
@@ -401,6 +401,86 @@ Note the RDS `EXTERNAL-NAME` (`db-F3PCKWMBTFMZVSSI3RIZJCYJWM`) doesn't match the
 **Describe a resource to see events and status conditions:**
 ```bash
 kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
+```
+
+### Inspecting the "State File" (Kubernetes etcd)
+
+Terraform keeps a `terraform.tfstate` file. Crossplane has none: **each managed resource object stored in the Kubernetes API (backed by etcd) is the state.** Everything Terraform would put in a state file lives on that object:
+
+| Field on the object | Equivalent in Terraform terms |
+|---|---|
+| `spec.forProvider` | Your desired configuration (the `.tf` resource block) |
+| `metadata.annotations["crossplane.io/external-name"]` | The real AWS ID that links the object to the AWS resource (like the `id` in state) |
+| `status.atProvider` | What Crossplane last observed in AWS (ARNs, endpoints, ...) |
+| `status.conditions` | `Synced` = last reconcile succeeded, `Ready` = resource is available in AWS |
+
+**View the full state of one resource:**
+
+```bash
+kubectl get instance.rds.aws.upbound.io crossplane-demo-db -o yaml
+kubectl get bucket.s3.aws.upbound.io crossplane-demo-bucket-xyz123 -o yaml
+```
+
+**Pull out just the important parts** (requires [`jq`](https://jqlang.github.io/jq/)):
+
+```bash
+# External name (AWS ID) for every managed resource
+kubectl get managed -o json | jq -r '.items[] |
+  "\(.kind)\t\(.metadata.name)\t\(.metadata.annotations["crossplane.io/external-name"])"'
+
+# What Crossplane observed in AWS for the database (endpoint, ARN, status, ...)
+kubectl get instance.rds.aws.upbound.io crossplane-demo-db -o jsonpath='{.status.atProvider}' | jq
+
+# Sync / ready conditions with the reason and message for any failure
+kubectl get instance.rds.aws.upbound.io crossplane-demo-db -o jsonpath='{.status.conditions}' | jq
+```
+
+**See the whole tree** (Crossplane CLI): shows each object, whether it is synced and ready, and any error:
+
+```bash
+crossplane beta trace instance.rds.aws.upbound.io crossplane-demo-db
+```
+
+**Back up the state:** because the state is ordinary Kubernetes objects, a backup is just an export:
+
+```bash
+kubectl get managed -o yaml > crossplane-state-backup.yaml
+```
+
+> Exports contain object metadata and status. Connection details (passwords) are kept in Secrets, not on the managed resources, so they are **not** in this file. Don't commit Secret exports to Git.
+
+<details>
+<summary>Advanced: read the raw entry from etcd (Path A only)</summary>
+
+On EKS, etcd is managed by AWS and **cannot be accessed directly**; the Kubernetes API above is the only way in. On Docker Desktop, etcd runs as a pod in `kube-system`, so you can look at the raw keys. Custom resources are stored as JSON under `/registry/<group>/<plural>/`.
+
+```bash
+# Find the etcd pod and the certificate paths it uses (they vary between Docker Desktop versions)
+kubectl -n kube-system get pods -l component=etcd
+kubectl -n kube-system get pod <etcd-pod> -o yaml | grep -E -- '--(trusted-ca-file|cert-file|key-file)='
+
+# List the Crossplane keys, then read one (substitute the paths printed above)
+kubectl -n kube-system exec <etcd-pod> -- etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=<trusted-ca-file> --cert=<cert-file> --key=<key-file> \
+  get /registry/rds.aws.upbound.io --prefix --keys-only
+
+kubectl -n kube-system exec <etcd-pod> -- etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=<trusted-ca-file> --cert=<cert-file> --key=<key-file> \
+  get /registry/rds.aws.upbound.io/instances/crossplane-demo-db --print-value-only
+```
+
+This is read-only exploration. **Never write to etcd directly**; always change state through `kubectl`.
+</details>
+
+**Compare: the Terraform state on Path B.** Terraform state is still used, but only for the platform layer (VPC, EKS, the Crossplane Helm release), not for the S3/RDS/IAM/DynamoDB resources. It lives in the S3 backend configured in [terraform/backend.tf](terraform/backend.tf):
+
+```bash
+cd terraform
+terraform state list                    # everything Terraform manages
+terraform state show 'module.eks.aws_eks_cluster.this[0]'   # quotes needed in zsh
+terraform output                        # cluster_name, cluster_endpoint, ...
 ```
 
 ### Working with the Database
