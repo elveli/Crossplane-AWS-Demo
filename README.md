@@ -412,7 +412,7 @@ kubectl describe bucket.s3 crossplane-demo-bucket-xyz123
 > | | Path A (Docker Desktop) | Path B (EKS) |
 > |---|:---:|:---:|
 > | `kubectl` / `jq` / `crossplane beta trace` / backup export | ✅ | ✅ |
-> | Raw `etcdctl` access | ✅ (read-only) | ❌ etcd is managed by AWS |
+> | [Raw `etcdctl` access](#reading-etcd-directly-with-etcdctl-path-a--docker-desktop-only) | ✅ (read-only) | ❌ etcd is managed by AWS |
 > | `terraform state` (VPC, EKS, Helm release) | ➖ no Terraform used | ✅ |
 
 Terraform keeps a `terraform.tfstate` file. Crossplane has none: **each managed resource object stored in the Kubernetes API (backed by etcd) is the state.** Everything Terraform would put in a state file lives on that object:
@@ -459,30 +459,90 @@ kubectl get managed -o yaml > crossplane-state-backup.yaml
 
 > Exports contain object metadata and status. Connection details (passwords) are kept in Secrets, not on the managed resources, so they are **not** in this file. Don't commit Secret exports to Git.
 
-<details>
-<summary>Advanced: read the raw entry from etcd (Path A only)</summary>
+#### Reading etcd directly with `etcdctl` (Path A / Docker Desktop only)
 
-On EKS, etcd is managed by AWS and **cannot be accessed directly**; the Kubernetes API above is the only way in. On Docker Desktop, etcd runs as a pod in `kube-system`, so you can look at the raw keys. Custom resources are stored as JSON under `/registry/<group>/<plural>/`.
+On EKS, AWS manages etcd and gives no direct access, so the Kubernetes API commands above are the only way in. On Docker Desktop, etcd runs as a pod in `kube-system`, and you can query it with the `etcdctl` binary that ships inside that pod.
+
+> **Read-only.** These commands only read. **Never `put` or `del` keys in etcd**: that bypasses the API server's validation and can corrupt the cluster. Always change state through `kubectl`.
+
+**1. Set up a helper** (paste into your shell; the etcd image has no shell of its own, so arguments are passed straight to `etcdctl`):
 
 ```bash
-# Find the etcd pod and the certificate paths it uses (they vary between Docker Desktop versions)
-kubectl -n kube-system get pods -l component=etcd
-kubectl -n kube-system get pod <etcd-pod> -o yaml | grep -E -- '--(trusted-ca-file|cert-file|key-file)='
+ETCD_POD=$(kubectl --context docker-desktop -n kube-system get pods -l component=etcd -o name | head -1)
 
-# List the Crossplane keys, then read one (substitute the paths printed above)
-kubectl -n kube-system exec <etcd-pod> -- etcdctl \
-  --endpoints=https://127.0.0.1:2379 \
-  --cacert=<trusted-ca-file> --cert=<cert-file> --key=<key-file> \
-  get /registry/rds.aws.upbound.io --prefix --keys-only
+etcdctl_dd() {
+  kubectl --context docker-desktop -n kube-system exec "$ETCD_POD" -- etcdctl \
+    --endpoints=https://127.0.0.1:2379 \
+    --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+    --cert=/etc/kubernetes/pki/etcd/server.crt \
+    --key=/etc/kubernetes/pki/etcd/server.key \
+    "$@"
+}
 
-kubectl -n kube-system exec <etcd-pod> -- etcdctl \
-  --endpoints=https://127.0.0.1:2379 \
-  --cacert=<trusted-ca-file> --cert=<cert-file> --key=<key-file> \
-  get /registry/rds.aws.upbound.io/instances/crossplane-demo-db --print-value-only
+etcdctl_dd endpoint status -w table   # health check: version, DB size, leader, current revision
 ```
 
-This is read-only exploration. **Never write to etcd directly**; always change state through `kubectl`.
-</details>
+> Tested on Docker Desktop's current Kubernetes (pod `etcd-desktop-control-plane`, etcd 3.6). Older Docker Desktop versions name the pod `etcd-docker-desktop` (the helper finds it either way) and may keep certificates under `/run/config/pki/etcd/`. If the helper fails with a TLS error, look up the real paths:
+> `kubectl --context docker-desktop -n kube-system get "$ETCD_POD" -o yaml | grep -E -- '--(trusted-ca|cert|key)-file='`
+
+**2. Find the Crossplane keys.** Every Kubernetes object is stored under `/registry/<api-group>/<plural>/<name>` (with the namespace inserted before the name for namespaced objects):
+
+```bash
+# All AWS managed resources created by this demo
+etcdctl_dd get /registry --prefix --keys-only | grep -E '^/registry/[^/]+\.upbound\.io/'
+# expected keys after `make aws-setup`:
+#   /registry/aws.upbound.io/providerconfigs/default
+#   /registry/dynamodb.aws.upbound.io/tables/crossplane-demo-table
+#   /registry/iam.aws.upbound.io/roles/crossplane-demo-role
+#   /registry/rds.aws.upbound.io/instances/crossplane-demo-db
+#   /registry/s3.aws.upbound.io/buckets/crossplane-demo-bucket-xyz123
+
+# Crossplane packages (providers, revisions, ...) grouped by type
+etcdctl_dd get /registry/pkg.crossplane.io --prefix --keys-only | grep -v '^$' | sed 's|/[^/]*$||' | sort | uniq -c
+
+# Count keys under a prefix
+etcdctl_dd get /registry/rds.aws.upbound.io --prefix --count-only -w fields | grep Count
+```
+
+**3. Read one resource's stored state.** Custom resources are stored as plain JSON, so you can pipe them straight into `jq` on your machine:
+
+```bash
+etcdctl_dd get /registry/rds.aws.upbound.io/instances/crossplane-demo-db --print-value-only \
+  | jq '{
+      desired:      .spec.forProvider,
+      externalName: .metadata.annotations["crossplane.io/external-name"],
+      observed:     .status.atProvider,
+      conditions:   [.status.conditions[] | {type, status, reason}]
+    }'
+```
+
+This is exactly the same data `kubectl get ... -o yaml` shows, read straight from the database.
+
+**4. See the revision bookkeeping.** etcd tracks how often each key has been written:
+
+```bash
+etcdctl_dd get /registry/rds.aws.upbound.io/instances/crossplane-demo-db -w fields \
+  | grep -E '^"(CreateRevision|ModRevision|Version)"'
+# example output (your numbers will differ):
+#   "CreateRevision" : 6842838   <- etcd revision when the object was created
+#   "ModRevision"    : 6851290   <- revision of the last write
+#   "Version"        : 14        <- number of writes to this key since creation
+
+# ModRevision is the resourceVersion Kubernetes reports:
+kubectl get instance.rds.aws.upbound.io crossplane-demo-db -o jsonpath='{.metadata.resourceVersion}'
+```
+
+`Version` climbs as Crossplane writes status updates during reconciliation. Old revisions are compacted by the API server every few minutes, so etcd is not a long-term history.
+
+**5. Watch Crossplane write state live.** Leave this running while you `kubectl apply`, `kubectl patch` or `kubectl delete` a manifest:
+
+```bash
+etcdctl_dd watch /registry/rds.aws.upbound.io --prefix    # Ctrl+C to stop
+```
+
+Each `PUT` is a write by the API server (your change, or a status update from the provider); a `DELETE` appears when the resource is finally removed.
+
+> **⚠️ Secrets are readable here too.** Secrets such as `/registry/secrets/default/crossplane-demo-db-conn` are stored in protobuf, and Docker Desktop does **not** encrypt them at rest, so anyone with etcd access can read the RDS password. Production clusters should enable [encryption at rest](https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/); on EKS this is done with an AWS KMS key.
 
 **Compare: the Terraform state on Path B.** Terraform state is still used, but only for the platform layer (VPC, EKS, the Crossplane Helm release), not for the S3/RDS/IAM/DynamoDB resources. It lives in the S3 backend configured in [terraform/backend.tf](terraform/backend.tf):
 
